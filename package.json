@@ -1,0 +1,36 @@
+{
+  "name": "pi-provider-clone",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clone Pi model providers under separate provider IDs and credential scopes",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "provider"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.81.1",
+    "@earendil-works/pi-coding-agent": "0.81.1",
+    "@types/node": "24.12.4",
+    "typescript": "5.9.3",
+    "vitest": "4.1.9"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
