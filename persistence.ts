@@ -53,7 +53,11 @@ function parseDefinition(value: unknown, index: number): ProviderCloneDefinition
   if (sourceId === targetId) {
     throw new Error(`clones[${index}] has identical source and target IDs`);
   }
-  if (typeof createdAt !== "string" || !Number.isFinite(Date.parse(createdAt))) {
+  if (
+    typeof createdAt !== "string" ||
+    !Number.isFinite(Date.parse(createdAt)) ||
+    new Date(createdAt).toISOString() !== createdAt
+  ) {
     throw new Error(`clones[${index}].createdAt must be an ISO date string`);
   }
 

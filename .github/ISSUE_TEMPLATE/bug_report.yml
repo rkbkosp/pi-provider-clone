@@ -1,0 +1,71 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Remove API keys, OAuth tokens, cookies, account identifiers, and sensitive prompt or tool output before submitting.
+  - type: input
+    id: pi-version
+    attributes:
+      label: Pi version
+      placeholder: 0.82.1
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and Node.js version
+      placeholder: macOS 15 / Node.js 22.19.0
+    validations:
+      required: true
+  - type: dropdown
+    id: provider-kind
+    attributes:
+      label: Source provider authentication
+      options:
+        - OAuth
+        - API key
+        - Other or unknown
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest sequence that reproduces the problem.
+      placeholder: |
+        1. Run /clone-provider
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted logs
+      description: Do not include credentials or private conversation content.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Sensitive-data check
+      options:
+        - label: I removed credentials, account identifiers, and sensitive content.
+          required: true

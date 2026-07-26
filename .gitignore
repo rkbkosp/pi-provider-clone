@@ -31,4 +31,6 @@ Thumbs.db
 !.env.example
 
 # Local Pi data (if ever written under the repo)
+auth.json
+models.json
 provider-clones.json

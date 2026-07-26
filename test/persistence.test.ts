@@ -67,7 +67,9 @@ describe("clone store persistence", () => {
     await saveCloneStore(store, storePath);
 
     await expect(loadCloneStore(storePath)).resolves.toEqual(store);
-    expect((await stat(storePath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(storePath)).mode & 0o777).toBe(0o600);
+    }
     expect(await readdir(join(directory, "nested"))).toEqual(["provider-clones.json"]);
   });
 
@@ -79,6 +81,34 @@ describe("clone store persistence", () => {
 
     await expect(loadCloneStore(storePath)).rejects.toBeInstanceOf(CloneStoreError);
     expect(await readFile(storePath, "utf8")).toBe(malformed);
+  });
+
+  it("requires canonical ISO timestamps", () => {
+    expect(() =>
+      parseCloneStore({
+        version: 1,
+        clones: [
+          {
+            sourceId: "source",
+            targetId: "target",
+            createdAt: "July 24, 2026",
+          },
+        ],
+      }),
+    ).toThrow(/ISO date string/u);
+
+    expect(() =>
+      parseCloneStore({
+        version: 1,
+        clones: [
+          {
+            sourceId: "source",
+            targetId: "target",
+            createdAt: "2026-02-31T12:00:00.000Z",
+          },
+        ],
+      }),
+    ).toThrow(/ISO date string/u);
   });
 
   it("rejects duplicate targets and clone-of-clone definitions", () => {

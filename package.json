@@ -1,34 +1,77 @@
 {
-  "name": "pi-provider-clone",
+  "name": "@rkbkosp/pi-provider-clone",
   "version": "0.1.0",
-  "private": true,
   "description": "Clone Pi model providers under separate provider IDs and credential scopes",
   "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "rkbkosp",
+    "url": "https://github.com/rkbkosp"
+  },
   "keywords": [
     "pi-package",
     "pi-extension",
-    "provider"
+    "coding-agent",
+    "ai-agent",
+    "provider",
+    "multi-account",
+    "oauth"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rkbkosp/pi-provider-clone.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rkbkosp/pi-provider-clone/issues"
+  },
+  "homepage": "https://github.com/rkbkosp/pi-provider-clone#readme",
+  "files": [
+    "index.ts",
+    "clone-provider.ts",
+    "persistence.ts",
+    "stream-bridge.ts",
+    "types.ts",
+    "validation.ts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "docs/DEV.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "pi": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/rkbkosp/pi-provider-clone/main/docs/preview.png"
   },
   "scripts": {
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.81.1",
-    "@earendil-works/pi-coding-agent": "0.81.1",
+    "@earendil-works/pi-ai": "0.82.1",
+    "@earendil-works/pi-coding-agent": "0.82.1",
+    "@eslint/js": "10.0.1",
     "@types/node": "24.12.4",
+    "eslint": "10.8.0",
     "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
     "vitest": "4.1.9"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "protobufjs": "7.6.5"
   },
   "engines": {
     "node": ">=22.19.0"

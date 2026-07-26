@@ -1,6 +1,12 @@
 # Pi Provider Clone
 
-A [Pi](https://github.com/earendil-works/pi) extension that clones an existing model provider under a new provider ID. Each clone gets its own credential-storage key while reusing the source provider's authentication flow, API implementation, endpoints, headers, and model definitions.
+[![CI](https://github.com/rkbkosp/pi-provider-clone/actions/workflows/ci.yml/badge.svg)](https://github.com/rkbkosp/pi-provider-clone/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@rkbkosp/pi-provider-clone.svg)](https://www.npmjs.com/package/@rkbkosp/pi-provider-clone)
+[![license](https://img.shields.io/npm/l/@rkbkosp/pi-provider-clone.svg)](./LICENSE)
+
+A [Pi](https://github.com/earendil-works/pi) extension that clones an existing model provider under a new provider ID and credential scope.
+
+![Pi Provider Clone preview](https://raw.githubusercontent.com/rkbkosp/pi-provider-clone/main/docs/preview.png)
 
 ```text
 openai-codex/gpt-5.5
@@ -8,57 +14,64 @@ openai-codex-personal/gpt-5.5
 openai-codex-work/gpt-5.5
 ```
 
-Model IDs, names, capabilities, limits, and pricing stay unchanged. Only `model.provider` is rewritten so Pi stores and selects credentials independently per clone.
+Each clone reuses the source provider's authentication flow, API implementation, endpoints, headers, and model definitions. Model IDs, names, capabilities, limits, and pricing stay unchanged; only `model.provider` is rewritten so Pi can store and select credentials independently.
 
 ## Why
 
-Pi keys credentials by `providerId`. One provider therefore maps to one stored OAuth session or API key. This extension lets you keep multiple accounts side by side without forking models or writing custom auth:
+Pi keys credentials by `providerId`. One provider therefore maps to one stored OAuth session or API key. This extension lets you keep multiple accounts side by side without forking model definitions or implementing custom authentication.
 
 | Goal | How this extension helps |
 | --- | --- |
-| Personal + work OAuth on the same provider | Clone once per account, then `/login` each clone |
-| Multiple API keys for the same vendor | Each clone stores its own key under a new provider ID |
-| Pick models in the native UI | `/model` shows `modelId [providerId]` for every clone |
+| Personal and work OAuth accounts | Clone once per account, then run `/login` for each clone |
+| Multiple API keys for one vendor | Store each key under a separate provider ID |
+| Native model selection | `/model` shows the same model under every provider ID |
 
 ## Requirements
 
-- Pi `0.81.1` or a compatible newer version
-- Node.js `22.19.0` or newer
+- Pi `0.81.1` or a compatible newer release
+- Node.js `22.19.0` or newer, matching Pi's runtime requirement
 
 ## Install
 
-### Local development
+### npm
 
 ```bash
-git clone <this-repo>
+pi install npm:@rkbkosp/pi-provider-clone
+```
+
+Try it without a persistent install:
+
+```bash
+pi -e npm:@rkbkosp/pi-provider-clone
+```
+
+### GitHub
+
+```bash
+pi install git:github.com/rkbkosp/pi-provider-clone
+```
+
+Pin a release when reproducibility matters:
+
+```bash
+pi install git:github.com/rkbkosp/pi-provider-clone@v0.1.0
+```
+
+### Local checkout
+
+```bash
+git clone https://github.com/rkbkosp/pi-provider-clone.git
 cd pi-provider-clone
-npm install
+npm ci
 pi -e .
 ```
 
-### Persistent Pi package
-
-```bash
-pi install /absolute/path/to/pi-provider-clone
-```
-
-### Global extension directory
-
-Copy or symlink the project so Pi discovers `index.ts` as:
-
-```text
-~/.pi/agent/extensions/provider-clone/index.ts
-```
+For a persistent local install, run `pi install .` from the repository root.
 
 ## Usage
 
 1. Start Pi with the extension loaded.
-2. Run:
-
-   ```text
-   /clone-provider
-   ```
-
+2. Run `/clone-provider`.
 3. Select a source provider.
 4. Enter a target provider ID such as `openai-codex-personal`.
 5. Authenticate the clone:
@@ -69,103 +82,75 @@ Copy or symlink the project so Pi discovers `index.ts` as:
 
 6. Open `/model` and search by provider ID or `provider/modelId`.
 
-### Provider ID rules
-
-Target IDs must match:
+Target provider IDs must match:
 
 ```regex
 ^[a-z0-9][a-z0-9._-]*$
 ```
 
-They must also be different from the source ID, not already registered, and not themselves a previous clone target (clones of clones are not supported in v1).
+The target must differ from the source, must not already be registered, and must not be another clone target. Cloning a clone is not supported in v1.
 
-### Storage
+## Storage and privacy
 
-Clone definitions live in:
+Clone definitions are stored at:
 
 ```text
 ${PI_CODING_AGENT_DIR:-~/.pi/agent}/provider-clones.json
 ```
 
-The file stores only:
+The extension writes only `sourceId`, `targetId`, and `createdAt`. It creates the file with mode `0600` where the platform supports POSIX permissions and does not read or modify project files.
 
-- `sourceId`
-- `targetId`
-- `createdAt`
+The extension does **not**:
 
-Tokens and API keys are never copied or written there. Credentials remain in Pi's normal auth store under the clone's provider ID.
+- read, copy, log, or persist tokens and API keys;
+- read or modify Pi's `auth.json` or `models.json`;
+- add telemetry or analytics;
+- contact any new network endpoint; or
+- execute shell commands.
 
-## Behavior
+Credentials remain in Pi's normal credential store under each clone's provider ID. Model requests are delegated to the selected source provider implementation and therefore use that provider's configured endpoint and privacy terms. A source provider's environment-variable credential fallback is also inherited; run `/login <clone-id>` to store a distinct credential.
 
-- Clones use a **static model snapshot** rebuilt on Pi startup or `/reload`.
-- Source authentication behavior is reused, including any source environment-variable fallback.
-- Run `/login <clone-id>` when you want a credential distinct from the source provider.
-- On reload/shutdown (non-quit), registered clones are unloaded so the next session can restore them cleanly from disk.
-- Streaming and tool-call context are bridged so Responses-style item IDs stay paired with the source provider implementation.
+## Behavior and limitations
 
-## Limitations (v1)
-
+- Clones use a static model snapshot rebuilt on Pi startup or `/reload`.
+- Source authentication behavior is reused, including environment-variable fallbacks.
+- Streaming and tool-call context are bridged so Responses-style item IDs stay paired with the source implementation.
 - Clones cannot be cloned again.
-- No built-in clone deletion or rename UI.
-- No credential copying, account rotation, or automatic failover.
-- Source model catalog changes apply only after restart or `/reload`.
+- There is no clone deletion or rename command in v1.
+- There is no credential copying, account rotation, automatic failover, or telemetry.
+- Changes to the source model catalog appear after restart or `/reload`.
+- Removing the package does not delete `provider-clones.json`; remove that file manually if you also want to erase saved clone definitions.
 
-## Project layout
+## Update and uninstall
 
-```text
-.
-├── index.ts              # Extension entry: command + session restore/unload
-├── clone-provider.ts     # Provider cloning and restore helpers
-├── stream-bridge.ts      # Stream/context bridging for cloned providers
-├── persistence.ts        # Load/save provider-clones.json
-├── validation.ts         # Target provider ID validation
-├── types.ts              # Shared TypeScript types
-├── test/                 # Vitest unit tests
-├── DEV.md                # Design notes and Pi behavior research
-├── package.json          # Pi package metadata (extensions: ./index.ts)
-└── tsconfig.json
+```bash
+pi update npm:@rkbkosp/pi-provider-clone
+pi remove npm:@rkbkosp/pi-provider-clone
 ```
+
+Pinned npm versions, Git tags, and commits do not drift during normal package updates. Install a new explicit version or ref to move a pinned installation.
 
 ## Development
 
 ```bash
-npm install
-npm run typecheck   # tsc --noEmit
-npm test            # vitest run
-npm run check       # typecheck + test
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run check
+npm pack --dry-run
 ```
 
-Peer packages (provided by Pi at runtime):
+Pi loads TypeScript extensions directly, so this package has no separate build artifact. The Pi packages imported at runtime are declared as `"*"` peer dependencies and are supplied by Pi; exact development versions are pinned only for repeatable tests.
 
-- `@earendil-works/pi-ai`
-- `@earendil-works/pi-coding-agent`
+See [DEV.md](./docs/DEV.md) for design constraints and [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidelines.
 
-Dev pins in this repo target Pi `0.81.1`.
+## Support and security
 
-## Manual acceptance checklist
-
-### API-key provider
-
-1. Create a clone.
-2. Run `/login <clone-id>` and save a different key from the source.
-3. Confirm `/model` shows the same model ID under both provider IDs.
-4. Send a normal prompt through each provider.
-5. Run `/logout <clone-id>` and verify source authentication remains available.
-
-### OpenAI Codex OAuth
-
-1. Log into `openai-codex` with account A.
-2. Clone it twice and log into each clone with separate accounts.
-3. For each provider, test a normal conversation, a tool call, the tool result continuation, and a later turn referring to that tool call.
-4. Switch within one session: source → clone A → clone B → source.
-5. Confirm no Responses item-ID / function-call pairing errors occur and saved assistant messages retain the selected target provider ID.
-6. Log out one clone and verify the other provider credentials are unaffected.
-7. Restart Pi and run `/reload`; confirm all clones are restored from the current source model catalog.
-
-## Design notes
-
-See [DEV.md](./DEV.md) for the full design background, confirmed Pi behavior, and implementation constraints.
+- Bugs and feature requests: [GitHub Issues](https://github.com/rkbkosp/pi-provider-clone/issues)
+- Security vulnerabilities: follow [SECURITY.md](./SECURITY.md) and use a private GitHub Security Advisory
+- Release history: [CHANGELOG.md](./CHANGELOG.md)
 
 ## License
 
-Private / unlicensed unless otherwise stated by the repository owner.
+[MIT](./LICENSE) © 2026 rkbkosp

@@ -10,7 +10,7 @@ import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import providerCloneExtension from "../index.js";
 import { loadCloneStore, saveCloneStore } from "../persistence.js";
-import { makeModel, makeProvider } from "./helpers.js";
+import { makeProvider } from "./helpers.js";
 
 type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 type EventHandler = (event: { reason?: string }, ctx: ExtensionContext) => unknown;
@@ -222,29 +222,32 @@ describe.sequential("clone-provider command", () => {
     expect(inputNotifications).toEqual([]);
   });
 
-  it("rolls registration back when persistence fails", async () => {
-    const agentDirectory = await useTemporaryAgentDirectory();
-    await chmod(agentDirectory, 0o500);
-    const harness = createHarness();
-    const notifications: Array<{ message: string; type: string | undefined }> = [];
-    const ctx = createCommandContext(harness, {
-      selected: "Provider source (source)",
-      input: "source-personal",
-      notifications,
-    });
+  it.skipIf(process.platform === "win32")(
+    "rolls registration back when persistence fails",
+    async () => {
+      const agentDirectory = await useTemporaryAgentDirectory();
+      await chmod(agentDirectory, 0o500);
+      const harness = createHarness();
+      const notifications: Array<{ message: string; type: string | undefined }> = [];
+      const ctx = createCommandContext(harness, {
+        selected: "Provider source (source)",
+        input: "source-personal",
+        notifications,
+      });
 
-    try {
-      await harness.command("", ctx);
-    } finally {
-      await chmod(agentDirectory, 0o700);
-    }
+      try {
+        await harness.command("", ctx);
+      } finally {
+        await chmod(agentDirectory, 0o700);
+      }
 
-    expect(harness.registerProvider).toHaveBeenCalledTimes(1);
-    expect(harness.unregisterProvider).toHaveBeenCalledWith("source-personal");
-    expect(harness.providers.has("source-personal")).toBe(false);
-    expect(notifications.at(-1)).toMatchObject({
-      type: "error",
-      message: expect.stringContaining("Unable to save provider clone store"),
-    });
-  });
+      expect(harness.registerProvider).toHaveBeenCalledTimes(1);
+      expect(harness.unregisterProvider).toHaveBeenCalledWith("source-personal");
+      expect(harness.providers.has("source-personal")).toBe(false);
+      expect(notifications.at(-1)).toMatchObject({
+        type: "error",
+        message: expect.stringContaining("Unable to save provider clone store"),
+      });
+    },
+  );
 });

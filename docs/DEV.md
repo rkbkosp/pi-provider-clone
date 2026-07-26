@@ -1,6 +1,6 @@
 # Pi Provider Clone Extension — DEV.md
 
-> 状态：v1 设计稿
+> 状态：v1 实现完成，首发版本 v0.1.0
 > 目标平台：`earendil-works/pi`
 > 参考实现快照：`main`，tag **v0.81.1 **commit 20be4b1
 > 扩展形态：Pi 全局 TypeScript extension
