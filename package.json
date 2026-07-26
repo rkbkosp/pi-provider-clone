@@ -63,7 +63,7 @@
     "@earendil-works/pi-ai": "0.82.1",
     "@earendil-works/pi-coding-agent": "0.82.1",
     "@eslint/js": "10.0.1",
-    "@types/node": "24.12.4",
+    "@types/node": "26.1.1",
     "eslint": "10.8.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",
