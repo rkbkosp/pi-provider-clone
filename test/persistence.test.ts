@@ -43,13 +43,13 @@ const store: ProviderCloneStore = {
 describe("clone store persistence", () => {
   it("uses PI_CODING_AGENT_DIR and expands a leading home shortcut", () => {
     expect(getCloneStorePath({ PI_CODING_AGENT_DIR: "/custom/pi" }, "/home/test")).toBe(
-      "/custom/pi/provider-clones.json",
+      join("/custom/pi", "provider-clones.json"),
     );
     expect(getCloneStorePath({ PI_CODING_AGENT_DIR: "~/agent" }, "/home/test")).toBe(
-      "/home/test/agent/provider-clones.json",
+      join("/home/test", "agent", "provider-clones.json"),
     );
     expect(getCloneStorePath({}, "/home/test")).toBe(
-      "/home/test/.pi/agent/provider-clones.json",
+      join("/home/test", ".pi", "agent", "provider-clones.json"),
     );
   });
 
