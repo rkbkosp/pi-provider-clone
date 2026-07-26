@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `/delete-cloned-provider` command for safely unregistering and removing saved provider clones while leaving Pi-managed credentials untouched.
+
 ## [0.1.0] - 2026-07-26
 
 ### Added

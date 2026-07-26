@@ -65,6 +65,119 @@ export default function providerCloneExtension(pi: ExtensionAPI): void {
     registeredProviders.clear();
   });
 
+  pi.registerCommand("delete-cloned-provider", {
+    description: "Delete a provider clone created by this extension",
+    handler: async (_args, ctx) => {
+      await ctx.waitForIdle();
+
+      let store;
+      try {
+        store = await loadCloneStore(storePath);
+      } catch (error) {
+        ctx.ui.notify(describeError(error), "error");
+        return;
+      }
+
+      if (store.clones.length === 0) {
+        ctx.ui.notify("No saved provider clones are available to delete.", "warning");
+        return;
+      }
+
+      const definitionByLabel = new Map<string, ProviderCloneDefinition>(
+        [...store.clones]
+          .sort((a, b) => a.targetId.localeCompare(b.targetId))
+          .map((definition) => [
+            `${definition.targetId} (from ${definition.sourceId})`,
+            definition,
+          ]),
+      );
+      const selectedLabel = await ctx.ui.select(
+        "Select provider clone to delete:",
+        [...definitionByLabel.keys()],
+      );
+      if (selectedLabel === undefined) return;
+
+      const definition = definitionByLabel.get(selectedLabel);
+      if (!definition) {
+        ctx.ui.notify("The selected provider clone is no longer available.", "error");
+        return;
+      }
+
+      const isActive = ctx.model?.provider === definition.targetId;
+      const activeWarning = isActive
+        ? "\n\nThis provider is currently active. Use /model to select another model before sending another prompt."
+        : "";
+      const confirmed = await ctx.ui.confirm(
+        "Delete provider clone?",
+        `Delete "${definition.targetId}", cloned from "${definition.sourceId}"?\n\n` +
+          "The provider and its saved clone definition will be removed. " +
+          `Credentials stored by Pi for this provider ID will remain; use /logout to remove them.${activeWarning}`,
+      );
+      if (!confirmed) return;
+
+      try {
+        await saveCloneStore(
+          {
+            version: 1,
+            clones: store.clones.filter(
+              (saved) => saved.targetId !== definition.targetId,
+            ),
+          },
+          storePath,
+        );
+      } catch (error) {
+        ctx.ui.notify(describeError(error), "error");
+        return;
+      }
+
+      const registeredProvider = registeredProviders.get(definition.targetId);
+      if (
+        registeredProvider &&
+        ctx.modelRegistry.getProvider(definition.targetId) === registeredProvider
+      ) {
+        try {
+          pi.unregisterProvider(definition.targetId);
+        } catch (error) {
+          const rollbackErrors: string[] = [];
+
+          try {
+            if (ctx.modelRegistry.getProvider(definition.targetId) === undefined) {
+              pi.registerProvider(registeredProvider);
+            }
+          } catch (rollbackError) {
+            rollbackErrors.push(`provider rollback failed: ${describeError(rollbackError)}`);
+          }
+
+          try {
+            await saveCloneStore(store, storePath);
+          } catch (rollbackError) {
+            rollbackErrors.push(`store rollback failed: ${describeError(rollbackError)}`);
+          }
+
+          const rollbackSuffix =
+            rollbackErrors.length > 0 ? ` Rollback errors: ${rollbackErrors.join("; ")}` : "";
+          ctx.ui.notify(
+            `Failed to unregister provider clone "${definition.targetId}": ${describeError(error)}${rollbackSuffix}`,
+            "error",
+          );
+          return;
+        }
+      }
+
+      registeredCloneIds.delete(definition.targetId);
+      registeredProviders.delete(definition.targetId);
+
+      const activeSuffix = isActive
+        ? " It was the active provider; use /model to select another model before continuing."
+        : "";
+      ctx.ui.notify(
+        `Provider clone "${definition.targetId}" deleted. ` +
+          `Any credential stored by Pi for this provider ID remains available to /logout.${activeSuffix}`,
+        "info",
+      );
+    },
+  });
+
   pi.registerCommand("clone-provider", {
     description: "Clone a provider under a new provider ID",
     handler: async (_args, ctx) => {

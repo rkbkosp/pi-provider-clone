@@ -1,6 +1,6 @@
 # Pi Provider Clone Extension — DEV.md
 
-> 状态：v1 实现完成，首发版本 v0.1.0
+> 状态：v1 已发布；Unreleased 增加 clone 删除功能
 > 目标平台：`earendil-works/pi`
 > 参考实现快照：`main`，tag **v0.81.1 **commit 20be4b1
 > 扩展形态：Pi 全局 TypeScript extension
@@ -170,11 +170,32 @@ Provider ID must match: ^[a-z0-9][a-z0-9._-]*$
 
 v1 不单独询问显示名称。后续版本可添加可选 display name。
 
+### 3.3 删除克隆
+
+用户运行：
+
+```text
+/delete-cloned-provider
+```
+
+交互流程：
+
+1. 从本扩展保存的 clone 定义中选择 target provider；
+2. 显示确认提示；
+3. 先原子删除持久化定义；
+4. 仅当当前注册项确实由本扩展创建时调用 `pi.unregisterProvider()`；
+5. 如果 target ID 已被其他 provider 占用，不注销该 provider；
+6. 提示 Pi 单独保存的 credential 不会被删除，可通过 `/logout` 清理；
+7. 如果删除的是当前模型 provider，提示先通过 `/model` 切换模型。
+
+取消选择或确认时不修改任何状态。持久化失败时不注销当前 clone；注销失败时尝试恢复 provider 注册和原持久化定义。
+
 ## 4. v1 范围
 
 ### 4.1 必须实现
 
 * `/clone-provider` 命令；
+* `/delete-cloned-provider` 命令；
 * 从当前模型注册表生成源 provider 列表；
 * Provider ID 输入和校验；
 * 克隆静态模型快照；
@@ -201,7 +222,6 @@ v1 不单独询问显示名称。后续版本可添加可选 display name。
 * 模型名称后缀；
 * 模型 ID 映射；
 * 动态复制源 provider 的远程模型刷新闭包；
-* `/delete-cloned-provider`；
 * `/rename-cloned-provider`；
 * 克隆 provider 再次被克隆；
 * 自动触发 `/login`；
@@ -780,7 +800,9 @@ Stream bridge 出错时必须以 Pi 可识别的 error event 结束 outer stream
 * `filterModels` 转换；
 * 配置文件读取、损坏处理和原子写入；
 * 重复定义和 target 冲突；
-* 恢复逻辑幂等。
+* 恢复逻辑幂等；
+* 删除确认、持久化失败保护和 provider 所有权检查；
+* 删除冲突定义时不注销其他 provider。
 
 ### 18.2 Codex smoke test
 
@@ -823,6 +845,7 @@ openai-codex
 v1 完成必须同时满足：
 
 * `/clone-provider` 可创建 clone；
+* `/delete-cloned-provider` 可删除本扩展保存的 clone，且不误删冲突 provider；
 * clone 定义可跨重启恢复；
 * source 和 target 可保存不同凭证；
 * 原生 `/model` 可区分同名模型；

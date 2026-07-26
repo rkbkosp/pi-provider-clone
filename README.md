@@ -90,6 +90,18 @@ Target provider IDs must match:
 
 The target must differ from the source, must not already be registered, and must not be another clone target. Cloning a clone is not supported in v1.
 
+### Delete a clone
+
+Run:
+
+```text
+/delete-cloned-provider
+```
+
+Select a saved clone and confirm the deletion. The command immediately unregisters a clone owned by this extension and removes its definition from `provider-clones.json`. If the target ID is currently occupied by another provider, only the saved clone definition is deleted; the conflicting provider is left untouched.
+
+Pi credentials are stored separately and are **not** deleted by this command. Run `/logout` and select the clone ID if you also want to remove its saved OAuth session or API key. If the deleted clone was active, use `/model` to select another model before sending the next prompt.
+
 ## Storage and privacy
 
 Clone definitions are stored at:
@@ -116,7 +128,7 @@ Credentials remain in Pi's normal credential store under each clone's provider I
 - Source authentication behavior is reused, including environment-variable fallbacks.
 - Streaming and tool-call context are bridged so Responses-style item IDs stay paired with the source implementation.
 - Clones cannot be cloned again.
-- There is no clone deletion or rename command in v1.
+- Clones can be deleted with `/delete-cloned-provider`; clone rename is not supported in v1.
 - There is no credential copying, account rotation, automatic failover, or telemetry.
 - Changes to the source model catalog appear after restart or `/reload`.
 - Removing the package does not delete `provider-clones.json`; remove that file manually if you also want to erase saved clone definitions.
