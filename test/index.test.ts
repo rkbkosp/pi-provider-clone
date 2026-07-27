@@ -8,7 +8,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import providerCloneExtension from "../index.js";
+import providerCloneExtension, { createProviderCloneExtension } from "../index.js";
 import { loadCloneStore, saveCloneStore } from "../persistence.js";
 import { makeProvider } from "./helpers.js";
 
@@ -24,7 +24,7 @@ interface Harness {
   unregisterProvider: ReturnType<typeof vi.fn>;
 }
 
-function createHarness(): Harness {
+async function createHarness(): Promise<Harness> {
   const source = makeProvider("source");
   const providers = new Map<string, Provider>([[source.id, source]]);
   const commands = new Map<string, CommandHandler>();
@@ -48,7 +48,9 @@ function createHarness(): Harness {
     unregisterProvider,
   } as unknown as ExtensionAPI;
 
-  providerCloneExtension(pi);
+  await createProviderCloneExtension({
+    loadSourceProviders: () => [source],
+  })(pi);
   const command = commands.get("clone-provider");
   const deleteCommand = commands.get("delete-cloned-provider");
   if (!command) throw new Error("clone-provider command was not registered");
@@ -125,9 +127,47 @@ async function useTemporaryAgentDirectory(): Promise<string> {
 }
 
 describe.sequential("clone-provider command", () => {
+  it("restores a built-in provider during the awaited factory", async () => {
+    const agentDirectory = await useTemporaryAgentDirectory();
+    await saveCloneStore(
+      {
+        version: 1,
+        clones: [
+          {
+            sourceId: "openai-codex",
+            targetId: "codex-personal",
+            createdAt: "2026-07-24T12:00:00.000Z",
+          },
+        ],
+      },
+      join(agentDirectory, "provider-clones.json"),
+    );
+
+    const registerProvider = vi.fn();
+    const eventHandlers = new Map<string, EventHandler[]>();
+    const pi = {
+      on(event: string, handler: EventHandler) {
+        const handlers = eventHandlers.get(event) ?? [];
+        handlers.push(handler);
+        eventHandlers.set(event, handlers);
+      },
+      registerCommand: vi.fn(),
+      registerProvider,
+      unregisterProvider: vi.fn(),
+    } as unknown as ExtensionAPI;
+
+    await providerCloneExtension(pi);
+
+    expect(registerProvider).toHaveBeenCalledTimes(1);
+    const clone = registerProvider.mock.calls[0]?.[0] as Provider | undefined;
+    expect(clone?.id).toBe("codex-personal");
+    expect(clone?.getModels()).not.toHaveLength(0);
+    expect(clone?.getModels().every((model) => model.provider === "codex-personal")).toBe(true);
+  });
+
   it("registers and persists a clone", async () => {
     const agentDirectory = await useTemporaryAgentDirectory();
-    const harness = createHarness();
+    const harness = await createHarness();
     const notifications: Array<{ message: string; type: string | undefined }> = [];
     const ctx = createCommandContext(harness, {
       selected: "Provider source (source)",
@@ -151,7 +191,7 @@ describe.sequential("clone-provider command", () => {
     });
   });
 
-  it("restores clones idempotently and unloads them before reload", async () => {
+  it("restores clones in the factory and unloads them before reload", async () => {
     const agentDirectory = await useTemporaryAgentDirectory();
     await saveCloneStore(
       {
@@ -166,7 +206,10 @@ describe.sequential("clone-provider command", () => {
       },
       join(agentDirectory, "provider-clones.json"),
     );
-    const harness = createHarness();
+    const harness = await createHarness();
+    expect(harness.registerProvider).toHaveBeenCalledTimes(1);
+    expect(harness.providers.has("source-personal")).toBe(true);
+
     const notifications: Array<{ message: string; type: string | undefined }> = [];
     const ctx = createCommandContext(harness, {
       selected: undefined,
@@ -181,14 +224,16 @@ describe.sequential("clone-provider command", () => {
     await start({ reason: "startup" }, ctx);
 
     expect(harness.registerProvider).toHaveBeenCalledTimes(1);
-    expect(harness.providers.has("source-personal")).toBe(true);
     expect(notifications).toEqual([]);
 
     await shutdown({ reason: "reload" }, ctx);
     expect(harness.unregisterProvider).toHaveBeenCalledWith("source-personal");
     expect(harness.providers.has("source-personal")).toBe(false);
 
-    const reloadedHarness = createHarness();
+    const reloadedHarness = await createHarness();
+    expect(reloadedHarness.registerProvider).toHaveBeenCalledTimes(1);
+    expect(reloadedHarness.providers.has("source-personal")).toBe(true);
+
     const reloadedStart = reloadedHarness.eventHandlers.get("session_start")?.[0];
     if (!reloadedStart) throw new Error("Reloaded lifecycle handler was not registered");
     await reloadedStart(
@@ -205,7 +250,7 @@ describe.sequential("clone-provider command", () => {
 
   it("silently stops when selection or input is cancelled", async () => {
     await useTemporaryAgentDirectory();
-    const selectionHarness = createHarness();
+    const selectionHarness = await createHarness();
     const selectionNotifications: Array<{ message: string; type: string | undefined }> = [];
     await selectionHarness.command(
       "",
@@ -216,7 +261,7 @@ describe.sequential("clone-provider command", () => {
       }),
     );
 
-    const inputHarness = createHarness();
+    const inputHarness = await createHarness();
     const inputNotifications: Array<{ message: string; type: string | undefined }> = [];
     await inputHarness.command(
       "",
@@ -238,7 +283,7 @@ describe.sequential("clone-provider command", () => {
     async () => {
       const agentDirectory = await useTemporaryAgentDirectory();
       await chmod(agentDirectory, 0o500);
-      const harness = createHarness();
+      const harness = await createHarness();
       const notifications: Array<{ message: string; type: string | undefined }> = [];
       const ctx = createCommandContext(harness, {
         selected: "Provider source (source)",
@@ -275,7 +320,7 @@ describe.sequential("delete-cloned-provider command", () => {
     const storePath = join(agentDirectory, "provider-clones.json");
     await saveCloneStore({ version: 1, clones: [savedClone] }, storePath);
 
-    const harness = createHarness();
+    const harness = await createHarness();
     const notifications: Array<{ message: string; type: string | undefined }> = [];
     const start = harness.eventHandlers.get("session_start")?.[0];
     if (!start) throw new Error("session_start handler was not registered");
@@ -314,7 +359,7 @@ describe.sequential("delete-cloned-provider command", () => {
     const storePath = join(agentDirectory, "provider-clones.json");
     await saveCloneStore({ version: 1, clones: [savedClone] }, storePath);
 
-    const harness = createHarness();
+    const harness = await createHarness();
     const foreignProvider = makeProvider("source-personal");
     harness.providers.set("source-personal", foreignProvider);
     const notifications: Array<{ message: string; type: string | undefined }> = [];
@@ -349,7 +394,7 @@ describe.sequential("delete-cloned-provider command", () => {
     const storePath = join(agentDirectory, "provider-clones.json");
     await saveCloneStore({ version: 1, clones: [savedClone] }, storePath);
 
-    const harness = createHarness();
+    const harness = await createHarness();
     const notifications: Array<{ message: string; type: string | undefined }> = [];
     await harness.deleteCommand(
       "",
@@ -371,7 +416,7 @@ describe.sequential("delete-cloned-provider command", () => {
 
   it("warns when there are no saved clones", async () => {
     await useTemporaryAgentDirectory();
-    const harness = createHarness();
+    const harness = await createHarness();
     const notifications: Array<{ message: string; type: string | undefined }> = [];
 
     await harness.deleteCommand(
@@ -396,7 +441,7 @@ describe.sequential("delete-cloned-provider command", () => {
     const storePath = join(agentDirectory, "provider-clones.json");
     await saveCloneStore({ version: 1, clones: [savedClone] }, storePath);
 
-    const harness = createHarness();
+    const harness = await createHarness();
     const notifications: Array<{ message: string; type: string | undefined }> = [];
     const start = harness.eventHandlers.get("session_start")?.[0];
     if (!start) throw new Error("session_start handler was not registered");
@@ -440,7 +485,7 @@ describe.sequential("delete-cloned-provider command", () => {
       const storePath = join(agentDirectory, "provider-clones.json");
       await saveCloneStore({ version: 1, clones: [savedClone] }, storePath);
 
-      const harness = createHarness();
+      const harness = await createHarness();
       const notifications: Array<{ message: string; type: string | undefined }> = [];
       const start = harness.eventHandlers.get("session_start")?.[0];
       if (!start) throw new Error("session_start handler was not registered");

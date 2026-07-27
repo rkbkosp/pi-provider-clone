@@ -1,8 +1,8 @@
 # Pi Provider Clone Extension — DEV.md
 
-> 状态：v1 已发布；Unreleased 增加 clone 删除功能
+> 状态：v1 已发布；Unreleased 增加 clone 删除功能并修复启动注册时序
 > 目标平台：`earendil-works/pi`
-> 参考实现快照：`main`，tag **v0.81.1 **commit 20be4b1
+> 参考实现快照：`main`，Pi **v0.82.1**
 > 扩展形态：Pi 全局 TypeScript extension
 
 ## 1. 背景
@@ -206,7 +206,7 @@ v1 不单独询问显示名称。后续版本可添加可选 display name。
 * 在源 provider 与克隆 provider 之间转换模型和历史消息身份；
 * 转换输出事件中的 provider；
 * 保存克隆定义；
-* 扩展启动或 `/reload` 时恢复克隆；
+* 在异步 extension factory 中恢复克隆，使其参与初始模型与 thinking level 选择以及 `--list-models`；
 * 重复加载幂等；
 * 完整错误提示；
 * 单元测试和手工验收测试。
@@ -300,7 +300,7 @@ export interface ProviderCloneStore {
 * 不保存 API Key；
 * 不复制 `auth.json`；
 * 不持久化模型快照；
-* 启动时始终从当前 source provider 重新构建 clone；
+* 启动时始终从 factory 阶段可解析的 source provider 重新构建 clone；
 * 写入使用临时文件加 rename，避免部分写入；
 * 读取失败时保留错误信息，不覆盖损坏文件；
 * 未找到文件时视为空配置；
@@ -308,38 +308,32 @@ export interface ProviderCloneStore {
 
 ## 7. Provider 枚举
 
-扩展 API 没有必要依赖内部 `ModelRuntime.getProviders()`。
+Pi 必须在创建 session、选择初始模型和解析 thinking level 之前看到已保存的 clone。`session_start` 中的 `ctx.modelRegistry` 因此太晚，恢复逻辑必须在可等待的 async extension factory 中完成。
 
-通过模型注册表获取 provider ID：
+Factory 没有 `ExtensionContext`。扩展通过公开的 `ModelRuntime.create()` 建立一个隔离、离线的 source catalog：
 
 ```ts
-function listCloneableProviders(ctx: ExtensionCommandContext) {
-  const ids = [
-    ...new Set(
-      ctx.modelRegistry
-        .getAll()
-        .map((model) => model.provider),
-    ),
-  ];
+const runtime = await ModelRuntime.create({
+  credentials: new InMemoryCredentialStore(),
+  modelsStore: new InMemoryModelsStore(),
+  allowModelNetwork: false,
+});
 
-  return ids
-    .map((id) => ({
-      id,
-      name: ctx.modelRegistry.getProviderDisplayName(id),
-      provider: ctx.modelRegistry.getProvider(id),
-    }))
-    .filter(
-      (item): item is {
-        id: string;
-        name: string;
-        provider: Provider;
-      } => item.provider !== undefined,
-    )
-    .sort((a, b) =>
-      `${a.name} ${a.id}`.localeCompare(`${b.name} ${b.id}`),
-    );
-}
+const sourceProviders = new Map(
+  runtime.getProviders().map((provider) => [provider.id, provider] as const),
+);
 ```
+
+该 runtime：
+
+* 使用内存 credential store，不读取 `auth.json`；
+* 使用内存 model store，不读取或写入远程 catalog cache；
+* 禁止 factory 阶段网络刷新；
+* 仍读取 Pi 的 built-in catalog 与 `models.json` 配置。
+
+恢复时从 `sourceProviders` 查 source 并立即调用 `pi.registerProvider()`。Factory 返回 Promise，Pi 会等待其完成并在初始模型解析前 flush 注册队列。
+
+交互命令仍通过 `ctx.modelRegistry` 获取当前有效 provider 和显示名称，但只展示同时存在于 factory source catalog 的 ID。这样新建 clone 才能在下次启动可靠恢复。仅由其他 extension 在其 factory 中注册的 provider 不在本扩展的隔离 catalog 中，v1 不允许将其作为 source。
 
 UI label：
 
@@ -347,9 +341,7 @@ UI label：
 `${name} (${id})`
 ```
 
-v1 仅展示拥有至少一个模型的 provider。
-
-如果 source provider 已经是本扩展创建的 clone，则不显示，避免 clone-of-clone。
+v1 仅展示拥有至少一个模型的 provider。如果 source provider 已经是本扩展创建的 clone，则不显示，避免 clone-of-clone。
 
 ## 8. Clone 构建规则
 
@@ -668,44 +660,41 @@ pi.registerCommand("clone-provider", {
 
 ## 13. 启动恢复
 
-v1 在 `session_start` 恢复：
+Unreleased 版本在 async extension factory 恢复，而不是等待 `session_start`：
 
 ```ts
-let restored = false;
-
-pi.on("session_start", async (_event, ctx) => {
-  if (restored) return;
-
+export default async function providerCloneExtension(
+  pi: ExtensionAPI,
+): Promise<void> {
+  const sourceProviders = new Map(
+    (await loadFactorySourceProviders())
+      .map((provider) => [provider.id, provider] as const),
+  );
   const store = await loadCloneStore();
 
-  for (const clone of store.clones) {
-    const source = ctx.modelRegistry.getProvider(
-      clone.sourceId,
-    );
+  restoreProviderClones({
+    definitions: store.clones,
+    registry: {
+      getProvider: (id) => sourceProviders.get(id),
+    },
+    registrar: pi,
+    registeredCloneIds: new Set(),
+    onWarning: (message) => startupWarnings.push(message),
+  });
 
-    if (!source) {
-      ctx.ui.notify(
-        `Cannot restore provider clone "${clone.targetId}": ` +
-          `source "${clone.sourceId}" is unavailable.`,
-        "warning",
-      );
-      continue;
-    }
-
-    if (ctx.modelRegistry.getProvider(clone.targetId)) {
-      continue;
-    }
-
-    pi.registerProvider(
-      createClonedProvider(source, clone.targetId),
-    );
-  }
-
-  restored = true;
-});
+  pi.on("session_start", (_event, ctx) => {
+    // 只展示 factory 收集的 warning，不再注册 provider。
+  });
+}
 ```
 
-`registerProvider()` 在初始加载后调用会立即生效，不要求额外 `/reload`。
+Pi 会 await factory，然后才继续启动并 flush factory 阶段排队的 provider 注册。因此 clone 可参与：
+
+* settings/CLI/session 中默认模型的初始解析；
+* 初始 thinking level 的能力校验与保留；
+* `pi --list-models`。
+
+命令处理器中创建或删除 provider 时，`registerProvider()` / `unregisterProvider()` 仍会立即生效，不要求额外 `/reload`。
 
 ## 14. 幂等性
 
@@ -715,16 +704,10 @@ pi.on("session_start", async (_event, ctx) => {
 * `/reload`；
 * session resume；
 * session fork；
-* 多次触发 `session_start`；
+* 多次触发 `session_start`（只允许重复展示逻辑，不执行恢复注册）；
 * 重复执行恢复逻辑。
 
-规则：
-
-```ts
-if (ctx.modelRegistry.getProvider(targetId)) {
-  // 已存在则跳过
-}
-```
+Factory 恢复时先检查隔离 source catalog 中是否已有 target ID；命令执行时继续通过 `ctx.modelRegistry.getProvider(targetId)` 检查当前 runtime 冲突。多个 extension 的 factory 注册队列发生同 ID 冲突时，shutdown/delete 的 provider 实例所有权检查可避免注销其他 extension 最终注册的 provider。
 
 同时维护：
 
@@ -800,7 +783,8 @@ Stream bridge 出错时必须以 Pi 可识别的 error event 结束 outer stream
 * `filterModels` 转换；
 * 配置文件读取、损坏处理和原子写入；
 * 重复定义和 target 冲突；
-* 恢复逻辑幂等；
+* factory 阶段恢复发生在 `session_start` 之前且注册幂等；
+* 保存的 clone 可被默认模型解析并出现在 `--list-models`；
 * 删除确认、持久化失败保护和 provider 所有权检查；
 * 删除冲突定义时不注销其他 provider。
 
@@ -846,7 +830,7 @@ v1 完成必须同时满足：
 
 * `/clone-provider` 可创建 clone；
 * `/delete-cloned-provider` 可删除本扩展保存的 clone，且不误删冲突 provider；
-* clone 定义可跨重启恢复；
+* clone 定义可跨重启恢复，并在初始模型选择前完成注册；
 * source 和 target 可保存不同凭证；
 * 原生 `/model` 可区分同名模型；
 * 模型 ID 和 name 不变；
@@ -870,7 +854,7 @@ v1 完成必须同时满足：
 4. 静态模型 clone；
 5. `/clone-provider`；
 6. 注册与保存；
-7. 启动恢复；
+7. async factory 启动恢复；
 8. API Key provider smoke test。
 
 ### P1：Provider 身份桥接
