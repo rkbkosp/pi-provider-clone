@@ -110,7 +110,7 @@ Clone definitions are stored at:
 ${PI_CODING_AGENT_DIR:-~/.pi/agent}/provider-clones.json
 ```
 
-The extension writes only `sourceId`, `targetId`, and `createdAt`. It creates the file with mode `0600` where the platform supports POSIX permissions and does not read or modify project files.
+The extension writes only `sourceId`, `targetId`, and `createdAt`. It creates the file with mode `0600` where the platform supports POSIX permissions and does not read or modify project files. Cross-process updates use a short-lived lock plus atomic replacement so concurrent Pi sessions do not overwrite each other's clone definitions.
 
 During its async factory, the extension creates an isolated, offline Pi model runtime with in-memory credential and model stores. This lets it resolve built-in and `models.json` source providers before initial model selection. The runtime may read Pi's model configuration, but it does not read `auth.json` or the cached model catalog and does not perform a model-catalog network refresh.
 
@@ -132,7 +132,8 @@ Credentials remain in Pi's normal credential store under each clone's provider I
 - Source authentication behavior is reused, including environment-variable fallbacks.
 - Streaming and tool-call context are bridged so Responses-style item IDs stay paired with the source implementation.
 - Clones cannot be cloned again.
-- Source providers must be discoverable from Pi's built-ins or `models.json` during factory initialization. Providers contributed only by another extension are not offered as clone sources.
+- Source providers must be discoverable from Pi's built-ins or `models.json` during factory initialization. Providers contributed only by another extension are not offered as clone sources, and interactive creation uses the same factory source that will be used after restart.
+- Pi does not expose other extensions' pending factory registrations. If another extension later registers the same target provider ID, normal Pi extension load-order precedence applies; use unique clone IDs to avoid collisions.
 - Clones can be deleted with `/delete-cloned-provider`; clone rename is not supported in v1.
 - There is no credential copying, account rotation, automatic failover, or telemetry.
 - Changes to the source model catalog appear after restart or `/reload`.

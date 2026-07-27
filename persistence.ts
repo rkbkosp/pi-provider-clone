@@ -1,11 +1,24 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ProviderCloneDefinition, ProviderCloneStore } from "./types.js";
 import { PROVIDER_ID_PATTERN } from "./validation.js";
 
 export const CLONE_STORE_FILENAME = "provider-clones.json";
+
+const STORE_LOCK_TIMEOUT_MS = 5_000;
+const STORE_LOCK_RETRY_MS = 25;
+const STORE_LOCK_STALE_MS = 30_000;
 
 export class CloneStoreError extends Error {
   readonly storePath: string;
@@ -103,6 +116,66 @@ function isMissingFileError(error: unknown): boolean {
   return isRecord(error) && error.code === "ENOENT";
 }
 
+function isAlreadyExistsError(error: unknown): boolean {
+  return isRecord(error) && error.code === "EEXIST";
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function acquireStoreLock(storePath: string): Promise<() => Promise<void>> {
+  const directory = dirname(storePath);
+  const lockPath = `${storePath}.lock`;
+  const deadline = Date.now() + STORE_LOCK_TIMEOUT_MS;
+
+  await mkdir(directory, { recursive: true });
+
+  for (;;) {
+    try {
+      const handle = await open(lockPath, "wx", 0o600);
+      try {
+        await handle.writeFile(`${process.pid}\n`, "utf8");
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        await unlink(lockPath).catch(() => undefined);
+        throw error;
+      }
+      return async () => {
+        await handle.close().catch(() => undefined);
+        await unlink(lockPath).catch(() => undefined);
+      };
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw new CloneStoreError(
+          `Unable to save provider clone store "${storePath}": unable to acquire update lock: ${errorMessage(error)}`,
+          storePath,
+          { cause: error },
+        );
+      }
+
+      try {
+        const lockStat = await stat(lockPath);
+        if (Date.now() - lockStat.mtimeMs > STORE_LOCK_STALE_MS) {
+          await unlink(lockPath);
+          continue;
+        }
+      } catch (lockError) {
+        if (isMissingFileError(lockError)) continue;
+      }
+
+      if (Date.now() >= deadline) {
+        throw new CloneStoreError(
+          `Unable to save provider clone store "${storePath}": timed out waiting for update lock.`,
+          storePath,
+        );
+      }
+
+      await delay(STORE_LOCK_RETRY_MS);
+    }
+  }
+}
+
 export async function loadCloneStore(storePath = getCloneStorePath()): Promise<ProviderCloneStore> {
   let contents: string;
   try {
@@ -124,6 +197,23 @@ export async function loadCloneStore(storePath = getCloneStorePath()): Promise<P
       storePath,
       { cause: error },
     );
+  }
+}
+
+export async function updateCloneStore(
+  update: (
+    current: ProviderCloneStore,
+  ) => ProviderCloneStore | Promise<ProviderCloneStore>,
+  storePath = getCloneStorePath(),
+): Promise<ProviderCloneStore> {
+  const release = await acquireStoreLock(storePath);
+
+  try {
+    const next = await update(await loadCloneStore(storePath));
+    await saveCloneStore(next, storePath);
+    return next;
+  } finally {
+    await release();
   }
 }
 

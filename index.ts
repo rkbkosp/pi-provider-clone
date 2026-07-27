@@ -13,7 +13,11 @@ import {
   listCloneableProviders,
   restoreProviderClones,
 } from "./clone-provider.js";
-import { getCloneStorePath, loadCloneStore, saveCloneStore } from "./persistence.js";
+import {
+  getCloneStorePath,
+  loadCloneStore,
+  updateCloneStore,
+} from "./persistence.js";
 import type { ProviderCloneDefinition } from "./types.js";
 import { validateTargetProviderId } from "./validation.js";
 
@@ -170,15 +174,27 @@ export function createProviderCloneExtension(
         if (!confirmed) return;
 
         try {
-          await saveCloneStore(
-            {
+          await updateCloneStore((current) => {
+            const currentDefinition = current.clones.find(
+              (saved) => saved.targetId === definition.targetId,
+            );
+            if (
+              !currentDefinition ||
+              currentDefinition.sourceId !== definition.sourceId ||
+              currentDefinition.createdAt !== definition.createdAt
+            ) {
+              throw new Error(
+                `Provider clone "${definition.targetId}" changed while deletion was being confirmed. Try again.`,
+              );
+            }
+
+            return {
               version: 1,
-              clones: store.clones.filter(
+              clones: current.clones.filter(
                 (saved) => saved.targetId !== definition.targetId,
               ),
-            },
-            storePath,
-          );
+            };
+          }, storePath);
         } catch (error) {
           ctx.ui.notify(describeError(error), "error");
           return;
@@ -199,7 +215,21 @@ export function createProviderCloneExtension(
             }
 
             try {
-              await saveCloneStore(store, storePath);
+              await updateCloneStore((current) => {
+                const currentDefinition = current.clones.find(
+                  (saved) => saved.targetId === definition.targetId,
+                );
+                if (currentDefinition) {
+                  if (
+                    currentDefinition.sourceId === definition.sourceId &&
+                    currentDefinition.createdAt === definition.createdAt
+                  ) {
+                    return current;
+                  }
+                  throw new Error("the target ID is now used by another clone definition");
+                }
+                return { version: 1, clones: [...current.clones, definition] };
+              }, storePath);
             } catch (rollbackError) {
               rollbackErrors.push(`store rollback failed: ${describeError(rollbackError)}`);
             }
@@ -287,10 +317,10 @@ export function createProviderCloneExtension(
           return;
         }
 
-        const currentSource = ctx.modelRegistry.getProvider(sourceChoice.id);
-        if (!currentSource) {
+        const factorySource = sourceProviders.get(sourceChoice.id);
+        if (!factorySource) {
           ctx.ui.notify(
-            `Cannot clone provider "${sourceChoice.id}": the source is no longer available.`,
+            `Cannot clone provider "${sourceChoice.id}": the factory source is no longer available.`,
             "error",
           );
           return;
@@ -298,7 +328,7 @@ export function createProviderCloneExtension(
 
         let clonedProvider;
         try {
-          clonedProvider = createClonedProvider(currentSource, targetId);
+          clonedProvider = createClonedProvider(factorySource, targetId);
           pi.registerProvider(clonedProvider);
           registeredCloneIds.add(targetId);
           registeredProviders.set(targetId, clonedProvider);
@@ -332,10 +362,14 @@ export function createProviderCloneExtension(
         };
 
         try {
-          await saveCloneStore(
-            { version: 1, clones: [...store.clones, definition] },
-            storePath,
-          );
+          await updateCloneStore((current) => {
+            if (current.clones.some((saved) => saved.targetId === targetId)) {
+              throw new Error(
+                `Provider clone target "${targetId}" was added by another process. Try another ID.`,
+              );
+            }
+            return { version: 1, clones: [...current.clones, definition] };
+          }, storePath);
         } catch (error) {
           let rollbackError: unknown;
           try {

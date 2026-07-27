@@ -10,7 +10,7 @@ import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import providerCloneExtension, { createProviderCloneExtension } from "../index.js";
 import { loadCloneStore, saveCloneStore } from "../persistence.js";
-import { makeProvider } from "./helpers.js";
+import { makeModel, makeProvider } from "./helpers.js";
 
 type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 type EventHandler = (event: { reason?: string }, ctx: ExtensionContext) => unknown;
@@ -189,6 +189,29 @@ describe.sequential("clone-provider command", () => {
       type: "info",
       message: expect.stringContaining("/login source-personal"),
     });
+  });
+
+  it("uses the factory source when the runtime provider is overridden", async () => {
+    await useTemporaryAgentDirectory();
+    const harness = await createHarness();
+    harness.providers.set(
+      "source",
+      makeProvider("source", [makeModel("source", "runtime-override")]),
+    );
+    const notifications: Array<{ message: string; type: string | undefined }> = [];
+
+    await harness.command(
+      "",
+      createCommandContext(harness, {
+        selected: "Provider source (source)",
+        input: "source-personal",
+        notifications,
+      }),
+    );
+
+    expect(harness.providers.get("source-personal")?.getModels().map((model) => model.id)).toEqual([
+      "model-1",
+    ]);
   });
 
   it("restores clones in the factory and unloads them before reload", async () => {
