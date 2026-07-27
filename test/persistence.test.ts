@@ -9,6 +9,7 @@ import {
   loadCloneStore,
   parseCloneStore,
   saveCloneStore,
+  updateCloneStore,
 } from "../persistence.js";
 import type { ProviderCloneStore } from "../types.js";
 
@@ -71,6 +72,59 @@ describe("clone store persistence", () => {
       expect((await stat(storePath)).mode & 0o777).toBe(0o600);
     }
     expect(await readdir(join(directory, "nested"))).toEqual(["provider-clones.json"]);
+  });
+
+  it("serializes concurrent read-modify-write updates", async () => {
+    const directory = await temporaryDirectory();
+    const storePath = join(directory, "provider-clones.json");
+    let releaseFirst!: () => void;
+    let markFirstEntered!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const firstEntered = new Promise<void>((resolve) => {
+      markFirstEntered = resolve;
+    });
+
+    const firstUpdate = updateCloneStore(async (current) => {
+      markFirstEntered();
+      await firstGate;
+      return {
+        version: 1,
+        clones: [
+          ...current.clones,
+          {
+            sourceId: "openai-codex",
+            targetId: "openai-codex-personal",
+            createdAt: "2026-07-24T12:00:00.000Z",
+          },
+        ],
+      };
+    }, storePath);
+    await firstEntered;
+
+    const secondUpdate = updateCloneStore((current) => ({
+      version: 1,
+      clones: [
+        ...current.clones,
+        {
+          sourceId: "anthropic",
+          targetId: "anthropic-work",
+          createdAt: "2026-07-24T13:00:00.000Z",
+        },
+      ],
+    }), storePath);
+
+    releaseFirst();
+    await Promise.all([firstUpdate, secondUpdate]);
+
+    await expect(loadCloneStore(storePath)).resolves.toMatchObject({
+      clones: [
+        { targetId: "openai-codex-personal" },
+        { targetId: "anthropic-work" },
+      ],
+    });
+    expect(await readdir(directory)).toEqual(["provider-clones.json"]);
   });
 
   it("reports malformed JSON without overwriting it", async () => {

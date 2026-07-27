@@ -301,7 +301,8 @@ export interface ProviderCloneStore {
 * 不复制 `auth.json`；
 * 不持久化模型快照；
 * 启动时始终从 factory 阶段可解析的 source provider 重新构建 clone；
-* 写入使用临时文件加 rename，避免部分写入；
+* read-modify-write 使用短生命周期 lock file 串行化跨进程更新；
+* 实际写入使用临时文件加 rename，避免部分写入；
 * 读取失败时保留错误信息，不覆盖损坏文件；
 * 未找到文件时视为空配置；
 * 文件权限建议设为 `0600`，尽管文件不含凭证。
@@ -333,7 +334,9 @@ const sourceProviders = new Map(
 
 恢复时从 `sourceProviders` 查 source 并立即调用 `pi.registerProvider()`。Factory 返回 Promise，Pi 会等待其完成并在初始模型解析前 flush 注册队列。
 
-交互命令仍通过 `ctx.modelRegistry` 获取当前有效 provider 和显示名称，但只展示同时存在于 factory source catalog 的 ID。这样新建 clone 才能在下次启动可靠恢复。仅由其他 extension 在其 factory 中注册的 provider 不在本扩展的隔离 catalog 中，v1 不允许将其作为 source。
+交互命令仍通过 `ctx.modelRegistry` 获取当前有效 provider 和显示名称，但只展示同时存在于 factory source catalog 的 ID，并始终从 factory catalog 的 provider 实例创建 clone。这样初次创建与下次启动恢复使用相同 source 语义。仅由其他 extension 在其 factory 中注册的 provider 不在本扩展的隔离 catalog 中，v1 不允许将其作为 source。
+
+Pi 当前不向 factory 暴露其他 extension 尚未 flush 的 provider 注册队列，因此无法提前检测未来 extension 对 clone target ID 的占用。该冲突遵循 Pi 的 extension load-order precedence；文档要求用户为 clone 选择唯一 ID，shutdown/delete 继续使用 provider 实例所有权检查，避免误注销最终获胜的其他 provider。
 
 UI label：
 
