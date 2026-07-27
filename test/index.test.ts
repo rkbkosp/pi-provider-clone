@@ -387,6 +387,10 @@ describe.sequential("delete-cloned-provider command", () => {
     expect(harness.unregisterProvider).not.toHaveBeenCalled();
     expect(harness.providers.get("source-personal")).toBe(foreignProvider);
     await expect(loadCloneStore(storePath)).resolves.toEqual({ version: 1, clones: [] });
+    expect(notifications.at(-1)).toMatchObject({
+      type: "info",
+      message: expect.stringMatching(/saved clone definition.*left untouched/iu),
+    });
   });
 
   it("keeps the clone when deletion is cancelled", async () => {

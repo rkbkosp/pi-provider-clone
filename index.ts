@@ -149,14 +149,22 @@ export function createProviderCloneExtension(
           return;
         }
 
-        const isActive = ctx.model?.provider === definition.targetId;
+        const registeredProvider = registeredProviders.get(definition.targetId);
+        const ownsRegisteredProvider =
+          registeredProvider !== undefined &&
+          ctx.modelRegistry.getProvider(definition.targetId) === registeredProvider;
+        const isActive =
+          ownsRegisteredProvider && ctx.model?.provider === definition.targetId;
         const activeWarning = isActive
           ? "\n\nThis provider is currently active. Use /model to select another model before sending another prompt."
           : "";
+        const deletionDescription = ownsRegisteredProvider
+          ? "The provider and its saved clone definition will be removed. "
+          : "Only the saved clone definition will be removed; the provider currently using this ID will be left untouched. ";
         const confirmed = await ctx.ui.confirm(
           "Delete provider clone?",
           `Delete "${definition.targetId}", cloned from "${definition.sourceId}"?\n\n` +
-            "The provider and its saved clone definition will be removed. " +
+            deletionDescription +
             `Credentials stored by Pi for this provider ID will remain; use /logout to remove them.${activeWarning}`,
         );
         if (!confirmed) return;
@@ -176,11 +184,7 @@ export function createProviderCloneExtension(
           return;
         }
 
-        const registeredProvider = registeredProviders.get(definition.targetId);
-        if (
-          registeredProvider &&
-          ctx.modelRegistry.getProvider(definition.targetId) === registeredProvider
-        ) {
+        if (registeredProvider && ownsRegisteredProvider) {
           try {
             pi.unregisterProvider(definition.targetId);
           } catch (error) {
@@ -216,8 +220,11 @@ export function createProviderCloneExtension(
         const activeSuffix = isActive
           ? " It was the active provider; use /model to select another model before continuing."
           : "";
+        const deletionResult = ownsRegisteredProvider
+          ? `Provider clone "${definition.targetId}" deleted. `
+          : `Saved clone definition for "${definition.targetId}" deleted; the provider currently using this ID was left untouched. `;
         ctx.ui.notify(
-          `Provider clone "${definition.targetId}" deleted. ` +
+          deletionResult +
             `Any credential stored by Pi for this provider ID remains available to /logout.${activeSuffix}`,
           "info",
         );
