@@ -39,7 +39,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: npm install --ignore-scripts
       - name: Run checks
         run: npm run check
 
@@ -56,7 +56,7 @@ jobs:
           node-version: 22.19.0
           cache: npm
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: npm install --ignore-scripts
       - name: Install minimum supported Pi packages
         run: >-
           npm install --no-save --package-lock=false --ignore-scripts
@@ -78,7 +78,9 @@ jobs:
           node-version: 22.19.0
           cache: npm
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: npm install --ignore-scripts
+      - name: Inspect Pi dependency tree
+        run: npm ls @earendil-works/pi-ai @earendil-works/pi-coding-agent typebox brace-expansion || true
       - name: Audit dependencies
         run: npm audit --audit-level=high
       - name: Inspect npm package
