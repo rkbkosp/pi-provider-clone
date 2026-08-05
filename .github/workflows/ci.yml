@@ -77,6 +77,10 @@ jobs:
         with:
           node-version: 22.19.0
           cache: npm
+      - name: Inspect published Pi versions
+        run: |
+          npm view @earendil-works/pi-ai version
+          npm view @earendil-works/pi-coding-agent version
       - name: Install dependencies
         run: npm install --ignore-scripts
       - name: Inspect Pi dependency tree
