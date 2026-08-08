@@ -1,6 +1,6 @@
 {
   "name": "@rkbkosp/pi-provider-clone",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Clone Pi model providers under separate provider IDs and credential scopes",
   "type": "module",
   "license": "MIT",
