@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish npm and GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NPM_TOKEN_FALLBACK: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+          package-manager-cache: false
+
+      - name: Ensure OIDC-capable npm
+        run: npm install --global "npm@^11.5.1"
+
+      - name: Read release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          PACKAGE="$(node -p "require('./package.json').name")"
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "package=${PACKAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          if ! grep -Fq "## [${VERSION}]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no release section for ${VERSION}" >&2
+            exit 1
+          fi
+          awk -v marker="## [${VERSION}]" '
+            index($0, marker) == 1 { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [[ ! -s /tmp/release-notes.md ]]; then
+            echo "Release notes for ${VERSION} are empty" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run release checks
+        run: |
+          npm run check
+          npm audit --audit-level=high
+          npm pack --dry-run
+
+      - name: Check npm publication state
+        id: npm-state
+        shell: bash
+        run: |
+          if npm view "${{ steps.meta.outputs.package }}@${{ steps.meta.outputs.version }}" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm with trusted publishing
+        id: publish-oidc
+        if: steps.npm-state.outputs.published != 'true'
+        continue-on-error: true
+        run: npm publish --access public
+
+      - name: Publish to npm with token fallback
+        if: steps.npm-state.outputs.published != 'true' && steps.publish-oidc.outcome == 'failure' && env.NPM_TOKEN_FALLBACK != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm view "${{ steps.meta.outputs.package }}@${{ steps.meta.outputs.version }}" version >/dev/null 2>&1; then
+            echo "Package was published by the previous attempt; skipping token fallback."
+            exit 0
+          fi
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN_FALLBACK" > "$RUNNER_TEMP/npmrc"
+          npm publish --access public --userconfig "$RUNNER_TEMP/npmrc"
+
+      - name: Verify npm publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLISHED="$(npm view "${{ steps.meta.outputs.package }}@${{ steps.meta.outputs.version }}" version)"
+          if [[ "$PUBLISHED" != "${{ steps.meta.outputs.version }}" ]]; then
+            echo "Expected npm version ${{ steps.meta.outputs.version }}, got $PUBLISHED" >&2
+            exit 1
+          fi
+
+      - name: Create release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            EXISTING="$(git rev-list -n 1 "${TAG}")"
+            if [[ "${EXISTING}" != "${GITHUB_SHA}" ]]; then
+              echo "${TAG} already exists at ${EXISTING}, expected ${GITHUB_SHA}" >&2
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "${TAG}" "${GITHUB_SHA}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+          fi
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "GitHub release ${TAG} already exists; skipping."
+          else
+            gh release create "${TAG}" \
+              --verify-tag \
+              --title "${TAG}" \
+              --notes-file /tmp/release-notes.md
+          fi
