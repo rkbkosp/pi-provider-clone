@@ -1,0 +1,58 @@
+name: Debug release run
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  inspect:
+    if: github.head_ref == 'debug/release-v0.2.1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out debug branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Inspect release workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: 1846f96e79703f7b34926d8c69307c8e8d39546c
+        run: |
+          set -euo pipefail
+          if [[ -f release-debug.txt ]]; then
+            exit 0
+          fi
+          {
+            echo "Release debug for ${RELEASE_SHA}"
+            echo
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RELEASE_SHA}&per_page=20" \
+              --jq '.workflow_runs[] | [.id, .name, .event, .status, (.conclusion // "null"), .html_url] | @tsv'
+          } > release-debug.txt
+          RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RELEASE_SHA}&per_page=20" --jq '.workflow_runs[] | select(.name == "Release") | .id' | head -n 1)"
+          if [[ -n "${RUN_ID}" ]]; then
+            {
+              echo
+              echo "--- Release run ${RUN_ID} ---"
+              gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json databaseId,name,event,status,conclusion,url,createdAt,updatedAt
+              echo
+              echo "--- Failed logs ---"
+              gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --log-failed || true
+            } >> release-debug.txt
+          fi
+      - name: Commit diagnostic report
+        shell: bash
+        run: |
+          if git diff --quiet -- release-debug.txt; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add release-debug.txt
+          git commit -m "ci: record v0.2.1 release diagnostics"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
