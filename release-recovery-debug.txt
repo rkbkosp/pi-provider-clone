@@ -1,0 +1,25 @@
+Recovery release debug for ed82132b810e507a7d04f1c3797118c298b33637
+
+{"conclusion":"success","createdAt":"2026-08-09T01:44:38Z","databaseId":31288890418,"event":"push","name":"Release","status":"completed","updatedAt":"2026-08-09T01:45:10Z","url":"https://github.com/rkbkosp/pi-provider-clone/actions/runs/31288890418"}
+
+--- Jobs ---
+
+✓ main Release · 31288890418
+Triggered via push less than a minute ago
+
+JOBS
+✓ Publish npm and GitHub release in 30s (ID 93182584543)
+
+For more information about the job, try: gh run view --job=93182584543
+View this run on GitHub: https://github.com/rkbkosp/pi-provider-clone/actions/runs/31288890418
+
+--- Failed logs ---
+
+--- npm version ---
+0.2.1
+
+--- tag ---
+0e0149fb7a77926177c970ecd4ca4a91d1f51cc5	refs/tags/v0.2.1
+
+--- GitHub release ---
+{"isDraft":false,"isPrerelease":false,"name":"v0.2.1","tagName":"v0.2.1","targetCommitish":"main","url":"https://github.com/rkbkosp/pi-provider-clone/releases/tag/v0.2.1"}
