@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-09
+
+### Changed
+
+- Updated `typescript-eslint` from 8.65.0 to 8.66.0 for development linting and type-aware ESLint tooling.
+- Updated the pinned CodeQL GitHub Actions from 4.37.4 to 4.37.6.
+
 ## [0.2.0] - 2026-08-08
 
 ### Added
@@ -37,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Startup and reload restoration of saved clones.
 - Unit tests, CI, security scanning, and release documentation.
 
-[Unreleased]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rkbkosp/pi-provider-clone/releases/tag/v0.1.0
