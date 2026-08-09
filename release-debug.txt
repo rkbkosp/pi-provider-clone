@@ -1,0 +1,30 @@
+Release debug for 1846f96e79703f7b34926d8c69307c8e8d39546c
+
+31288573774	Release	push	completed	failure	https://github.com/rkbkosp/pi-provider-clone/actions/runs/31288573774
+31288573763	CI	push	completed	success	https://github.com/rkbkosp/pi-provider-clone/actions/runs/31288573763
+31288573752	Security	push	completed	success	https://github.com/rkbkosp/pi-provider-clone/actions/runs/31288573752
+
+--- Release run 31288573774 ---
+{"conclusion":"failure","createdAt":"2026-08-09T01:35:11Z","databaseId":31288573774,"event":"push","name":"Release","status":"completed","updatedAt":"2026-08-09T01:35:55Z","url":"https://github.com/rkbkosp/pi-provider-clone/actions/runs/31288573774"}
+
+--- Failed logs ---
+Publish npm and GitHub release	Verify npm publication	﻿2026-08-09T01:35:52.3410329Z ##[group]Run set -euo pipefail
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3410696Z ^[[36;1mset -euo pipefail^[[0m
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3411060Z ^[[36;1mPUBLISHED="$(npm view "@rkbkosp/pi-provider-clone@0.2.1" version)"^[[0m
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3411521Z ^[[36;1mif [[ "$PUBLISHED" != "0.2.1" ]]; then^[[0m
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3411902Z ^[[36;1m  echo "Expected npm version 0.2.1, got $PUBLISHED" >&2^[[0m
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3412234Z ^[[36;1m  exit 1^[[0m
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3412444Z ^[[36;1mfi^[[0m
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3462306Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3462669Z env:
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3462872Z   NPM_TOKEN_FALLBACK: 
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.3463310Z ##[endgroup]
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6544136Z npm error code E404
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6545926Z npm error 404 No match found for version 0.2.1
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6546359Z npm error 404
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6551144Z npm error 404  The requested resource '@rkbkosp/pi-provider-clone@0.2.1' could not be found or you do not have permission to access it.
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6552453Z npm error 404
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6552997Z npm error 404 Note that you can also install from a
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6555092Z npm error 404 tarball, folder, http url, or git url.
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6568957Z npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-08-09T01_35_52_405Z-debug-0.log
+Publish npm and GitHub release	Verify npm publication	2026-08-09T01:35:52.6657895Z ##[error]Process completed with exit code 1.
