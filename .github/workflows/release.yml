@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - package.json
+      - .github/workflows/release.yml
   workflow_dispatch:
 
 permissions:
@@ -45,9 +46,11 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           PACKAGE="$(node -p "require('./package.json').name")"
           TAG="v${VERSION}"
+          RELEASE_SHA="$(git log -1 --format=%H -- package.json)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "package=${PACKAGE}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           if ! grep -Fq "## [${VERSION}]" CHANGELOG.md; then
             echo "CHANGELOG.md has no release section for ${VERSION}" >&2
             exit 1
@@ -103,27 +106,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PUBLISHED="$(npm view "${{ steps.meta.outputs.package }}@${{ steps.meta.outputs.version }}" version)"
-          if [[ "$PUBLISHED" != "${{ steps.meta.outputs.version }}" ]]; then
-            echo "Expected npm version ${{ steps.meta.outputs.version }}, got $PUBLISHED" >&2
-            exit 1
-          fi
+          EXPECTED="${{ steps.meta.outputs.version }}"
+          PACKAGE="${{ steps.meta.outputs.package }}"
+          for attempt in {1..12}; do
+            PUBLISHED="$(npm view "${PACKAGE}@${EXPECTED}" version 2>/dev/null || true)"
+            if [[ "$PUBLISHED" == "$EXPECTED" ]]; then
+              echo "Verified ${PACKAGE}@${EXPECTED} on npm."
+              exit 0
+            fi
+            if [[ "$attempt" -lt 12 ]]; then
+              echo "npm registry has not exposed ${PACKAGE}@${EXPECTED} yet (attempt ${attempt}/12); retrying."
+              sleep 5
+            fi
+          done
+          echo "Expected npm version ${EXPECTED}, but it was not visible after 12 attempts." >&2
+          exit 1
 
       - name: Create release tag
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ steps.meta.outputs.tag }}"
+          RELEASE_SHA="${{ steps.meta.outputs.release_sha }}"
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
             EXISTING="$(git rev-list -n 1 "${TAG}")"
-            if [[ "${EXISTING}" != "${GITHUB_SHA}" ]]; then
-              echo "${TAG} already exists at ${EXISTING}, expected ${GITHUB_SHA}" >&2
+            if [[ "${EXISTING}" != "${RELEASE_SHA}" ]]; then
+              echo "${TAG} already exists at ${EXISTING}, expected ${RELEASE_SHA}" >&2
               exit 1
             fi
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "${TAG}" "${GITHUB_SHA}" -m "Release ${TAG}"
+            git tag -a "${TAG}" "${RELEASE_SHA}" -m "Release ${TAG}"
             git push origin "${TAG}"
           fi
 
