@@ -41,6 +41,29 @@ describe("createClonedProvider", () => {
     expect("refreshModels" in clone).toBe(false);
   });
 
+  it("preserves Codex transport identity while changing only provider credential scope", () => {
+    const sourceModel = {
+      ...makeModel("openai-codex", "gpt-5.6-sol"),
+      api: "openai-codex-responses" as const,
+      baseUrl: "https://chatgpt.com/backend-api",
+    };
+    const source = makeProvider("openai-codex", [sourceModel]);
+    const clone = createClonedProvider(source, "openai-codex-personal");
+
+    const [clonedModel] = clone.getModels();
+    expect(clonedModel).toMatchObject({
+      provider: "openai-codex-personal",
+      api: "openai-codex-responses",
+      baseUrl: "https://chatgpt.com/backend-api",
+      id: "gpt-5.6-sol",
+    });
+    expect(clonedModel?.api).toBe(sourceModel.api);
+    expect(clonedModel?.baseUrl).toBe(sourceModel.baseUrl);
+    expect(clonedModel).toEqual({ ...sourceModel, provider: "openai-codex-personal" });
+    expect(sourceModel.provider).toBe("openai-codex");
+    expect("refreshModels" in clone).toBe(false);
+  });
+
   it("rejects a source with no models", () => {
     expect(() => createClonedProvider(makeProvider("empty", []), "clone")).toThrow(
       ProviderCloneError,
