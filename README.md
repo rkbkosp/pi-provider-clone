@@ -1,10 +1,10 @@
-# Pi Provider Clone
+# Pi Coding Agent Provider Clone
 
 [![CI](https://github.com/rkbkosp/pi-provider-clone/actions/workflows/ci.yml/badge.svg)](https://github.com/rkbkosp/pi-provider-clone/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@rkbkosp/pi-provider-clone.svg)](https://www.npmjs.com/package/@rkbkosp/pi-provider-clone)
 [![license](https://img.shields.io/npm/l/@rkbkosp/pi-provider-clone.svg)](./LICENSE)
 
-A [Pi](https://github.com/earendil-works/pi) extension that clones an existing model provider under a new provider ID and credential scope.
+**Pi Provider Clone** is a provider clone extension for the [Pi coding agent](https://github.com/earendil-works/pi). It clones an existing Pi model provider under a new provider ID with an independent credential scope, so multiple OAuth accounts or API keys can coexist in the same Pi installation.
 
 ![Pi Provider Clone preview](https://raw.githubusercontent.com/rkbkosp/pi-provider-clone/main/docs/preview.png)
 
@@ -18,7 +18,7 @@ Each clone reuses the source provider's authentication flow, API implementation,
 
 ## Why
 
-Pi keys credentials by `providerId`. One provider therefore maps to one stored OAuth session or API key. This extension lets you keep multiple accounts side by side without forking model definitions or implementing custom authentication.
+Pi keys credentials by `providerId`. One provider therefore maps to one stored OAuth session or API key. This Pi provider clone extension lets you keep multiple accounts side by side without forking model definitions or implementing custom authentication.
 
 | Goal | How this extension helps |
 | --- | --- |
