@@ -168,7 +168,7 @@ describe.sequential("session replacement cancellation", () => {
     const ctx = createGuardedContext({
       providers: harness.providers,
       valid,
-      selected: "source (source)",
+      selected: "Provider source (source)",
       input: "source-personal",
       notifications,
     });
