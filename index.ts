@@ -69,7 +69,7 @@ export function createProviderCloneExtension(
     const sourceProviders = new Map<string, Provider>();
     const inFlightCommands = new Set<AbortController>();
     let sessionGeneration = 0;
-    let sessionActive = false;
+    let sessionActive = true;
 
     const beginCommand = (): CommandLifetime => {
       const controller = new AbortController();
