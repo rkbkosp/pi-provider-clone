@@ -319,7 +319,7 @@ export function createProviderCloneExtension(
             "info",
           );
         } catch (error) {
-          if (!commandIsCurrent(lifetime) && isAbortError(error)) return;
+          if (!commandIsCurrent(lifetime)) return;
           throw error;
         } finally {
           finishCommand(lifetime);
@@ -475,7 +475,7 @@ export function createProviderCloneExtension(
             "info",
           );
         } catch (error) {
-          if (!commandIsCurrent(lifetime) && isAbortError(error)) return;
+          if (!commandIsCurrent(lifetime)) return;
           throw error;
         } finally {
           finishCommand(lifetime);
