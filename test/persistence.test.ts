@@ -30,6 +30,16 @@ afterEach(async () => {
   );
 });
 
+function signalAbortedOnCheck(abortOnCheck: number): AbortSignal {
+  let checks = 0;
+  return {
+    get aborted() {
+      checks += 1;
+      return checks >= abortOnCheck;
+    },
+  } as AbortSignal;
+}
+
 const store: ProviderCloneStore = {
   version: 1,
   clones: [
@@ -72,6 +82,66 @@ describe("clone store persistence", () => {
       expect((await stat(storePath)).mode & 0o777).toBe(0o600);
     }
     expect(await readdir(join(directory, "nested"))).toEqual(["provider-clones.json"]);
+  });
+
+  it("preserves the store and cleans the temporary file when aborted before rename", async () => {
+    const directory = await temporaryDirectory();
+    const storePath = join(directory, "provider-clones.json");
+    await saveCloneStore(store, storePath);
+    const originalContents = await readFile(storePath, "utf8");
+    const replacement: ProviderCloneStore = {
+      version: 1,
+      clones: [
+        {
+          sourceId: "anthropic",
+          targetId: "anthropic-work",
+          createdAt: "2026-08-18T00:00:00.000Z",
+        },
+      ],
+    };
+
+    await expect(
+      saveCloneStore(replacement, storePath, {
+        // saveCloneStore checks cancellation before mkdir, after mkdir, after
+        // writing the temp file, and immediately before the atomic rename.
+        signal: signalAbortedOnCheck(4),
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(await readFile(storePath, "utf8")).toBe(originalContents);
+    await expect(loadCloneStore(storePath)).resolves.toEqual(store);
+    expect(await readdir(directory)).toEqual(["provider-clones.json"]);
+  });
+
+  it("releases the update lock when cancellation wins after computing an update", async () => {
+    const directory = await temporaryDirectory();
+    const storePath = join(directory, "provider-clones.json");
+    await saveCloneStore(store, storePath);
+    const controller = new AbortController();
+
+    await expect(
+      updateCloneStore(
+        (current) => {
+          controller.abort();
+          return {
+            version: 1,
+            clones: [
+              ...current.clones,
+              {
+                sourceId: "anthropic",
+                targetId: "anthropic-work",
+                createdAt: "2026-08-18T00:00:00.000Z",
+              },
+            ],
+          };
+        },
+        storePath,
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    await expect(loadCloneStore(storePath)).resolves.toEqual(store);
+    expect(await readdir(directory)).toEqual(["provider-clones.json"]);
   });
 
   it("serializes concurrent read-modify-write updates", async () => {
