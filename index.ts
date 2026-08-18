@@ -68,6 +68,7 @@ export function createProviderCloneExtension(
     const startupWarnings: string[] = [];
     const sourceProviders = new Map<string, Provider>();
     const inFlightCommands = new Set<AbortController>();
+    const pendingStoreOperations = new Set<Promise<unknown>>();
     let sessionGeneration = 0;
     let sessionActive = true;
 
@@ -90,6 +91,13 @@ export function createProviderCloneExtension(
       sessionGeneration += 1;
       for (const controller of inFlightCommands) controller.abort();
       inFlightCommands.clear();
+    };
+    const trackStoreOperation = <T>(operation: Promise<T>): Promise<T> => {
+      pendingStoreOperations.add(operation);
+      void operation
+        .finally(() => pendingStoreOperations.delete(operation))
+        .catch(() => undefined);
+      return operation;
     };
 
     try {
@@ -131,8 +139,11 @@ export function createProviderCloneExtension(
       }
     });
 
-    pi.on("session_shutdown", (event, ctx) => {
+    pi.on("session_shutdown", async (event, ctx) => {
       invalidateCommandLifetimes();
+      if (pendingStoreOperations.size > 0) {
+        await Promise.allSettled([...pendingStoreOperations]);
+      }
       if (event.reason === "quit") return;
 
       for (const targetId of registeredCloneIds) {
@@ -221,30 +232,32 @@ export function createProviderCloneExtension(
           if (!confirmed) return;
 
           try {
-            await updateCloneStore(
-              (current) => {
-                const currentDefinition = current.clones.find(
-                  (saved) => saved.targetId === definition.targetId,
-                );
-                if (
-                  !currentDefinition ||
-                  currentDefinition.sourceId !== definition.sourceId ||
-                  currentDefinition.createdAt !== definition.createdAt
-                ) {
-                  throw new Error(
-                    `Provider clone "${definition.targetId}" changed while deletion was being confirmed. Try again.`,
+            await trackStoreOperation(
+              updateCloneStore(
+                (current) => {
+                  const currentDefinition = current.clones.find(
+                    (saved) => saved.targetId === definition.targetId,
                   );
-                }
+                  if (
+                    !currentDefinition ||
+                    currentDefinition.sourceId !== definition.sourceId ||
+                    currentDefinition.createdAt !== definition.createdAt
+                  ) {
+                    throw new Error(
+                      `Provider clone "${definition.targetId}" changed while deletion was being confirmed. Try again.`,
+                    );
+                  }
 
-                return {
-                  version: 1,
-                  clones: current.clones.filter(
-                    (saved) => saved.targetId !== definition.targetId,
-                  ),
-                };
-              },
-              storePath,
-              { signal: lifetime.controller.signal },
+                  return {
+                    version: 1,
+                    clones: current.clones.filter(
+                      (saved) => saved.targetId !== definition.targetId,
+                    ),
+                  };
+                },
+                storePath,
+                { signal: lifetime.controller.signal },
+              ),
             );
           } catch (error) {
             if (!commandIsCurrent(lifetime) || isAbortError(error)) return;
@@ -269,24 +282,26 @@ export function createProviderCloneExtension(
               }
 
               try {
-                await updateCloneStore(
-                  (current) => {
-                    const currentDefinition = current.clones.find(
-                      (saved) => saved.targetId === definition.targetId,
-                    );
-                    if (currentDefinition) {
-                      if (
-                        currentDefinition.sourceId === definition.sourceId &&
-                        currentDefinition.createdAt === definition.createdAt
-                      ) {
-                        return current;
+                await trackStoreOperation(
+                  updateCloneStore(
+                    (current) => {
+                      const currentDefinition = current.clones.find(
+                        (saved) => saved.targetId === definition.targetId,
+                      );
+                      if (currentDefinition) {
+                        if (
+                          currentDefinition.sourceId === definition.sourceId &&
+                          currentDefinition.createdAt === definition.createdAt
+                        ) {
+                          return current;
+                        }
+                        throw new Error("the target ID is now used by another clone definition");
                       }
-                      throw new Error("the target ID is now used by another clone definition");
-                    }
-                    return { version: 1, clones: [...current.clones, definition] };
-                  },
-                  storePath,
-                  { signal: lifetime.controller.signal },
+                      return { version: 1, clones: [...current.clones, definition] };
+                    },
+                    storePath,
+                    { signal: lifetime.controller.signal },
+                  ),
                 );
               } catch (rollbackError) {
                 if (!commandIsCurrent(lifetime) || isAbortError(rollbackError)) return;
@@ -436,17 +451,19 @@ export function createProviderCloneExtension(
           };
 
           try {
-            await updateCloneStore(
-              (current) => {
-                if (current.clones.some((saved) => saved.targetId === targetId)) {
-                  throw new Error(
-                    `Provider clone target "${targetId}" was added by another process. Try another ID.`,
-                  );
-                }
-                return { version: 1, clones: [...current.clones, definition] };
-              },
-              storePath,
-              { signal: lifetime.controller.signal },
+            await trackStoreOperation(
+              updateCloneStore(
+                (current) => {
+                  if (current.clones.some((saved) => saved.targetId === targetId)) {
+                    throw new Error(
+                      `Provider clone target "${targetId}" was added by another process. Try another ID.`,
+                    );
+                  }
+                  return { version: 1, clones: [...current.clones, definition] };
+                },
+                storePath,
+                { signal: lifetime.controller.signal },
+              ),
             );
           } catch (error) {
             if (!commandIsCurrent(lifetime) || isAbortError(error)) return;
