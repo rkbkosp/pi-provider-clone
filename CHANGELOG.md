@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Cancel in-flight clone/delete commands during session replacement and make clone-store persistence abortable so stale command contexts cannot resume after `/reload`, `/new`, `/resume`, or `/fork` and commit state into a replacement runtime.
+
 ## [0.2.1] - 2026-08-09
 
 ### Changed

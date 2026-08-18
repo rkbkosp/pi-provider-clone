@@ -30,6 +30,10 @@ export class CloneStoreError extends Error {
   }
 }
 
+export interface CloneStoreOperationOptions {
+  signal?: AbortSignal;
+}
+
 export function emptyCloneStore(): ProviderCloneStore {
   return { version: 1, clones: [] };
 }
@@ -120,22 +124,62 @@ function isAlreadyExistsError(error: unknown): boolean {
   return isRecord(error) && error.code === "EEXIST";
 }
 
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function createAbortError(): Error {
+  const error = new Error("Provider clone store operation aborted");
+  error.name = "AbortError";
+  return error;
 }
 
-async function acquireStoreLock(storePath: string): Promise<() => Promise<void>> {
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || (error as Error & { code?: unknown }).code === "ABORT_ERR")
+  );
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw createAbortError();
+}
+
+function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+  if (signal.aborted) return Promise.reject(createAbortError());
+
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      reject(createAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function acquireStoreLock(
+  storePath: string,
+  signal?: AbortSignal,
+): Promise<() => Promise<void>> {
   const directory = dirname(storePath);
   const lockPath = `${storePath}.lock`;
   const deadline = Date.now() + STORE_LOCK_TIMEOUT_MS;
 
+  throwIfAborted(signal);
   await mkdir(directory, { recursive: true });
 
   for (;;) {
+    throwIfAborted(signal);
     try {
       const handle = await open(lockPath, "wx", 0o600);
       try {
+        throwIfAborted(signal);
         await handle.writeFile(`${process.pid}\n`, "utf8");
+        throwIfAborted(signal);
       } catch (error) {
         await handle.close().catch(() => undefined);
         await unlink(lockPath).catch(() => undefined);
@@ -146,6 +190,7 @@ async function acquireStoreLock(storePath: string): Promise<() => Promise<void>>
         await unlink(lockPath).catch(() => undefined);
       };
     } catch (error) {
+      if (isAbortError(error)) throw error;
       if (!isAlreadyExistsError(error)) {
         throw new CloneStoreError(
           `Unable to save provider clone store "${storePath}": unable to acquire update lock: ${errorMessage(error)}`,
@@ -171,7 +216,7 @@ async function acquireStoreLock(storePath: string): Promise<() => Promise<void>>
         );
       }
 
-      await delay(STORE_LOCK_RETRY_MS);
+      await delay(STORE_LOCK_RETRY_MS, signal);
     }
   }
 }
@@ -205,12 +250,16 @@ export async function updateCloneStore(
     current: ProviderCloneStore,
   ) => ProviderCloneStore | Promise<ProviderCloneStore>,
   storePath = getCloneStorePath(),
+  options: CloneStoreOperationOptions = {},
 ): Promise<ProviderCloneStore> {
-  const release = await acquireStoreLock(storePath);
+  const release = await acquireStoreLock(storePath, options.signal);
 
   try {
+    throwIfAborted(options.signal);
     const next = await update(await loadCloneStore(storePath));
-    await saveCloneStore(next, storePath);
+    throwIfAborted(options.signal);
+    await saveCloneStore(next, storePath, options);
+    throwIfAborted(options.signal);
     return next;
   } finally {
     await release();
@@ -220,6 +269,7 @@ export async function updateCloneStore(
 export async function saveCloneStore(
   store: ProviderCloneStore,
   storePath = getCloneStorePath(),
+  options: CloneStoreOperationOptions = {},
 ): Promise<void> {
   let validated: ProviderCloneStore;
   try {
@@ -232,6 +282,7 @@ export async function saveCloneStore(
     );
   }
 
+  throwIfAborted(options.signal);
   const directory = dirname(storePath);
   const temporaryPath = join(
     directory,
@@ -240,15 +291,19 @@ export async function saveCloneStore(
 
   try {
     await mkdir(directory, { recursive: true });
+    throwIfAborted(options.signal);
     await writeFile(temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, {
       encoding: "utf8",
       flag: "wx",
       mode: 0o600,
     });
+    throwIfAborted(options.signal);
     await chmod(temporaryPath, 0o600);
+    throwIfAborted(options.signal);
     await rename(temporaryPath, storePath);
   } catch (error) {
     await unlink(temporaryPath).catch(() => undefined);
+    if (isAbortError(error)) throw error;
     throw new CloneStoreError(
       `Unable to save provider clone store "${storePath}": ${errorMessage(error)}`,
       storePath,
