@@ -338,6 +338,29 @@ const sourceProviders = new Map(
 
 Pi 当前不向 factory 暴露其他 extension 尚未 flush 的 provider 注册队列，因此无法提前检测未来 extension 对 clone target ID 的占用。该冲突遵循 Pi 的 extension load-order precedence；文档要求用户为 clone 选择唯一 ID，shutdown/delete 继续使用 provider 实例所有权检查，避免误注销最终获胜的其他 provider。
 
+### 7.1 运行时 overlay 兼容兜底
+
+Pi 0.84.x 的 named `registerProvider(targetId, config)` 会移除相同 ID 的 native
+provider。若另一个扩展只提供 `api`/`streamSimple` 等增量字段，它原本想包装 clone，
+实际却会同时丢失 clone 的模型、OAuth auth 与 source/target identity bridge。
+
+本扩展只在以下条件全部满足时恢复原 clone provider：
+
+* 当前模型正在使用本扩展仍持有的 clone target；
+* live provider 缺失，或公开 registration inspection API 能确认它是 named config；
+* named config 未声明 `models` 或 `refreshModels`；
+* live provider 的模型列表为空，且没有 foreign native provider 注册。
+
+检查发生在 `input`（早于 prompt auth preflight）和 `turn_start`（覆盖自动工具续轮）。
+恢复直接重注册本扩展保存的原 `Provider` 对象，不读取或复制 credential，因此 credential
+scope、OAuth auth、filter 与 stream identity bridge 均保持不变。每个 target 每个 extension
+生命周期最多提示一次 warning。
+
+若 foreign provider 提供模型、动态 catalog 或 native provider 对象，本扩展不覆盖它；
+delete 和 shutdown 仍继续按 provider 对象身份判断所有权。旧 overlay 会因恢复而失效，
+因此这只是安全降级；正确的 wrapper 应注册一个保留完整上游 provider 能力的 native
+`Provider`。
+
 UI label：
 
 ```ts

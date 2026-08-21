@@ -134,6 +134,7 @@ Credentials remain in Pi's normal credential store under each clone's provider I
 - Clones cannot be cloned again.
 - Source providers must be discoverable from Pi's built-ins or `models.json` during factory initialization. Providers contributed only by another extension are not offered as clone sources, and interactive creation uses the same factory source that will be used after restart.
 - Pi does not expose other extensions' pending factory registrations. If another extension later registers the same target provider ID, normal Pi extension load-order precedence applies; use unique clone IDs to avoid collisions.
+- If an older extension displaces the active native clone with a named runtime overlay that has no model catalog, Provider Clone restores its complete provider before the next prompt or automatic tool continuation and shows one warning. This compatibility fallback preserves clone authentication and identity bridging, but disables that incompatible overlay for the clone. Providers that supply their own models, dynamic catalog, or native `Provider` registration are left untouched.
 - Clones can be deleted with `/delete-cloned-provider`; clone rename is not supported in v1.
 - There is no credential copying, account rotation, automatic failover, or telemetry.
 - Changes to the source model catalog appear after restart or `/reload`.

@@ -6,6 +6,7 @@ import {
 import {
   ModelRuntime,
   type ExtensionAPI,
+  type ExtensionContext,
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -51,6 +52,43 @@ interface CommandLifetime {
   controller: AbortController;
 }
 
+function hasOwn(value: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isIncompleteNamedProviderOverlay(
+  registry: ExtensionContext["modelRegistry"],
+  targetId: string,
+  currentProvider: Provider,
+): boolean {
+  // These public registration inspection methods distinguish a named config
+  // overlay from a foreign native Provider. If an older compatible Pi release
+  // does not expose them, leave the foreign registration untouched.
+  if (
+    typeof registry.getRegisteredProviderConfig !== "function" ||
+    typeof registry.getRegisteredNativeProvider !== "function"
+  ) {
+    return false;
+  }
+
+  if (registry.getRegisteredNativeProvider(targetId) !== undefined) return false;
+
+  const config = registry.getRegisteredProviderConfig(targetId);
+  if (!config) return false;
+
+  // An explicit static or dynamic catalog is provider ownership, even while a
+  // dynamic provider's first refresh is pending. Do not take that ID back.
+  if (hasOwn(config, "models") || hasOwn(config, "refreshModels")) return false;
+
+  try {
+    return currentProvider.getModels().length === 0;
+  } catch {
+    // Provider.getModels() should not throw, but a throwing foreign provider is
+    // not enough evidence that it is the incomplete overlay handled here.
+    return false;
+  }
+}
+
 export function createProviderCloneExtension(
   dependencies: ProviderCloneExtensionDependencies = {},
 ): ExtensionFactory {
@@ -69,6 +107,7 @@ export function createProviderCloneExtension(
     const sourceProviders = new Map<string, Provider>();
     const inFlightCommands = new Set<AbortController>();
     const pendingStoreOperations = new Set<Promise<unknown>>();
+    const reportedRuntimeRecoveries = new Set<string>();
     let sessionGeneration = 0;
     let sessionActive = true;
 
@@ -98,6 +137,49 @@ export function createProviderCloneExtension(
         .finally(() => pendingStoreOperations.delete(operation))
         .catch(() => undefined);
       return operation;
+    };
+    const restoreActiveCloneIfDisplaced = (ctx: ExtensionContext): void => {
+      if (!sessionActive) return;
+
+      const targetId = ctx.model?.provider;
+      if (!targetId || !registeredCloneIds.has(targetId)) return;
+
+      const registeredProvider = registeredProviders.get(targetId);
+      if (!registeredProvider) return;
+
+      const currentProvider = ctx.modelRegistry.getProvider(targetId);
+      if (currentProvider === registeredProvider) return;
+      if (
+        currentProvider !== undefined &&
+        !isIncompleteNamedProviderOverlay(
+          ctx.modelRegistry,
+          targetId,
+          currentProvider,
+        )
+      ) {
+        return;
+      }
+
+      try {
+        pi.registerProvider(registeredProvider);
+        if (
+          !reportedRuntimeRecoveries.has(targetId) &&
+          ctx.modelRegistry.getProvider(targetId) === registeredProvider
+        ) {
+          reportedRuntimeRecoveries.add(targetId);
+          ctx.ui.notify(
+            `Provider clone "${targetId}" was restored after an incomplete runtime provider overlay displaced it. The incompatible overlay is disabled for this provider.`,
+            "warning",
+          );
+        }
+      } catch (error) {
+        if (reportedRuntimeRecoveries.has(targetId)) return;
+        reportedRuntimeRecoveries.add(targetId);
+        ctx.ui.notify(
+          `Failed to restore displaced provider clone "${targetId}": ${describeError(error)}`,
+          "warning",
+        );
+      }
     };
 
     try {
@@ -137,6 +219,15 @@ export function createProviderCloneExtension(
       for (const warning of startupWarnings) {
         ctx.ui.notify(warning, "warning");
       }
+    });
+
+    // `input` runs before Pi's prompt auth preflight. `turn_start` also covers
+    // automatic tool continuations, which do not emit a new input event.
+    pi.on("input", (_event, ctx) => {
+      restoreActiveCloneIfDisplaced(ctx);
+    });
+    pi.on("turn_start", (_event, ctx) => {
+      restoreActiveCloneIfDisplaced(ctx);
     });
 
     pi.on("session_shutdown", async (event, ctx) => {

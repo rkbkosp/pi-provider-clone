@@ -92,6 +92,7 @@ interface Harness {
   cloneCommand: CommandHandler;
   deleteCommand: CommandHandler;
   start: EventHandler;
+  recover: EventHandler;
   shutdown: EventHandler;
   registerProvider: ReturnType<typeof vi.fn>;
   unregisterProvider: ReturnType<typeof vi.fn>;
@@ -125,8 +126,9 @@ async function createHarness(storePath: string): Promise<Harness> {
   const cloneCommand = commands.get("clone-provider");
   const deleteCommand = commands.get("delete-cloned-provider");
   const start = eventHandlers.get("session_start")?.[0];
+  const recover = eventHandlers.get("turn_start")?.[0];
   const shutdown = eventHandlers.get("session_shutdown")?.[0];
-  if (!cloneCommand || !deleteCommand || !start || !shutdown) {
+  if (!cloneCommand || !deleteCommand || !start || !recover || !shutdown) {
     throw new Error("provider clone lifecycle hooks were not registered");
   }
 
@@ -135,6 +137,7 @@ async function createHarness(storePath: string): Promise<Harness> {
     cloneCommand,
     deleteCommand,
     start,
+    recover,
     shutdown,
     registerProvider,
     unregisterProvider,
@@ -158,6 +161,24 @@ async function temporaryStorePath(): Promise<string> {
 }
 
 describe.sequential("session replacement cancellation", () => {
+  it("does not inspect a stale ctx if a recovery callback arrives after shutdown", async () => {
+    const harness = await createHarness(await temporaryStorePath());
+    const valid = { value: true };
+    const notifications: Array<{ message: string; type: string | undefined }> = [];
+    const ctx = createGuardedContext({
+      providers: harness.providers,
+      valid,
+      notifications,
+    });
+
+    await harness.start({ reason: "startup" }, ctx);
+    await harness.shutdown({ reason: "reload" }, ctx);
+    valid.value = false;
+
+    expect(() => harness.recover({}, ctx)).not.toThrow();
+    expect(notifications).toEqual([]);
+  });
+
   it("aborts a clone waiting on persistence without touching the stale command ctx", async () => {
     const storePath = await temporaryStorePath();
     const lockPath = `${storePath}.lock`;
