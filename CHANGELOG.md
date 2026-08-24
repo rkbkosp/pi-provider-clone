@@ -6,9 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-24
+
+### Changed
+
+- Improved README and package metadata discoverability for Pi provider-clone use cases.
+- Updated development validation to `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` 0.84.2 while retaining Pi 0.82.1 as the minimum supported version.
+- Updated development tooling to `typescript-eslint` 8.67.0, ESLint 10.8.1, and Vitest 4.1.11, and refreshed the pinned CodeQL actions.
+
 ### Fixed
 
 - Cancel in-flight clone/delete commands during session replacement and make clone-store persistence abortable so stale command contexts cannot resume after `/reload`, `/new`, `/resume`, or `/fork` and commit state into a replacement runtime.
+- Install the minimum supported Pi version from a clean dependency tree in CI, avoiding npm Arborist failures caused by in-place dependency downgrades.
+- Harden release automation so npm registry propagation delays can be retried and incomplete releases can resume safely.
 
 ## [0.2.1] - 2026-08-09
 
@@ -48,7 +58,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Startup and reload restoration of saved clones.
 - Unit tests, CI, security scanning, and release documentation.
 
-[Unreleased]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rkbkosp/pi-provider-clone/releases/tag/v0.1.0
