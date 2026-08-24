@@ -1,6 +1,6 @@
 {
   "name": "@rkbkosp/pi-provider-clone",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Provider clone extension for the Pi coding agent with separate provider IDs and credential scopes",
   "type": "module",
   "license": "MIT",
