@@ -157,7 +157,7 @@ async function temporaryStorePath(): Promise<string> {
   return join(directory, "provider-clones.json");
 }
 
-describe.sequential("session replacement cancellation", () => {
+describe("session replacement cancellation", { concurrent: false }, () => {
   it("aborts a clone waiting on persistence without touching the stale command ctx", async () => {
     const storePath = await temporaryStorePath();
     const lockPath = `${storePath}.lock`;
