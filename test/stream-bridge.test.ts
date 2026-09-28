@@ -1,5 +1,13 @@
-import type { AssistantMessageEvent, Context } from "@earendil-works/pi-ai";
+import type { AssistantMessageEvent, Provider } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
+
+type ProviderStreamContext = Parameters<Provider["stream"]>[1];
+
+function makeProviderStreamContext(
+  messages: ProviderStreamContext["messages"],
+): ProviderStreamContext {
+  return { messages } as ProviderStreamContext;
+}
 import {
   bridgeStream,
   mapAssistantMessageEvent,
@@ -28,23 +36,20 @@ describe("provider identity transforms", () => {
     const cloneAssistant = makeAssistantMessage("clone");
     const sourceAssistant = makeAssistantMessage("source");
     const otherAssistant = makeAssistantMessage("other-clone");
-    const context: Context = {
-      systemPrompt: "system",
-      messages: [
-        { role: "user", content: "hello", timestamp: 1 },
-        cloneAssistant,
-        sourceAssistant,
-        otherAssistant,
-        {
-          role: "toolResult",
-          toolCallId: "call-1",
-          toolName: "read",
-          content: [{ type: "text", text: "result" }],
-          isError: false,
-          timestamp: 2,
-        },
-      ],
-    };
+    const context = makeProviderStreamContext([
+      { role: "user", content: "hello", timestamp: 1 },
+      cloneAssistant,
+      sourceAssistant,
+      otherAssistant,
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "read",
+        content: [{ type: "text", text: "result" }],
+        isError: false,
+        timestamp: 2,
+      },
+    ]);
 
     const transformed = toSourceContext(context, "source", "clone");
 
