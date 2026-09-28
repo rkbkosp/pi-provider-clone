@@ -126,7 +126,7 @@ async function useTemporaryAgentDirectory(): Promise<string> {
   return directory;
 }
 
-describe.sequential("clone-provider command", () => {
+describe("clone-provider command", { concurrent: false }, () => {
   it("restores a built-in provider during the awaited factory", async () => {
     const agentDirectory = await useTemporaryAgentDirectory();
     await saveCloneStore(
@@ -331,7 +331,7 @@ describe.sequential("clone-provider command", () => {
   );
 });
 
-describe.sequential("delete-cloned-provider command", () => {
+describe("delete-cloned-provider command", { concurrent: false }, () => {
   const savedClone = {
     sourceId: "source",
     targetId: "source-personal",
