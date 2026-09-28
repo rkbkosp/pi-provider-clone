@@ -4,8 +4,8 @@ import {
   type AssistantMessage,
   type AssistantMessageEvent,
   type AssistantMessageEventStream,
-  type Context,
   type Model,
+  type Provider,
 } from "@earendil-works/pi-ai";
 
 export function toSourceModel<TApi extends Api>(
@@ -15,11 +15,13 @@ export function toSourceModel<TApi extends Api>(
   return { ...model, provider: sourceId };
 }
 
+type ProviderStreamContext = Parameters<Provider["stream"]>[1];
+
 export function toSourceContext(
-  context: Context,
+  context: ProviderStreamContext,
   sourceId: string,
   targetId: string,
-): Context {
+): ProviderStreamContext {
   return {
     ...context,
     messages: context.messages.map((message) => {

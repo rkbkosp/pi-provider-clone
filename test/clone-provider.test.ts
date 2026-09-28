@@ -5,6 +5,14 @@ import {
   type Provider,
 } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
+
+type ProviderStreamContext = Parameters<Provider["stream"]>[1];
+
+function makeProviderStreamContext(
+  messages: ProviderStreamContext["messages"],
+): ProviderStreamContext {
+  return { messages } as ProviderStreamContext;
+}
 import {
   createClonedProvider,
   listCloneableProviders,
@@ -109,9 +117,10 @@ describe("createClonedProvider", () => {
     const clone = createClonedProvider(source, "clone");
     const cloneModel = clone.getModels()[0];
     if (!cloneModel) throw new Error("Missing cloned model");
-    const context = {
-      messages: [makeAssistantMessage("clone"), makeAssistantMessage("other-clone")],
-    };
+    const context = makeProviderStreamContext([
+      makeAssistantMessage("clone"),
+      makeAssistantMessage("other-clone"),
+    ]);
 
     const normalEvents = await collectEvents(
       clone.stream(cloneModel, context, { apiKey: "target-credential" }),
@@ -149,7 +158,7 @@ describe("createClonedProvider", () => {
     const model = clone.getModels()[0];
     if (!model) throw new Error("Missing cloned model");
 
-    await expect(collectEvents(clone.stream(model, { messages: [] }))).resolves.toMatchObject([
+    await expect(collectEvents(clone.stream(model, makeProviderStreamContext([])))).resolves.toMatchObject([
       {
         type: "error",
         error: { provider: "clone", errorMessage: expect.stringContaining("source exploded") },
