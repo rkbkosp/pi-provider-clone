@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-28
+
+### Changed
+
+- Updated development and compatibility validation to `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` 0.87.1 while retaining Pi 0.82.1 as the minimum supported version.
+- Updated development tooling to `@types/node` 24.13.6, `typescript-eslint` 8.70.1, ESLint 10.11.0, and Vitest 5.0.0, and refreshed the pinned CodeQL actions.
+
+### Fixed
+
+- Preserved normalized provider stream contexts while rewriting cloned-provider identities, keeping compatibility with newer Pi releases that use branded `TranscriptContext` values without dropping support for Pi 0.82.1.
+- Updated sequential test suites for Vitest 5 while preserving their serial execution semantics.
+
 ## [0.2.2] - 2026-08-24
 
 ### Changed
@@ -58,7 +70,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Startup and reload restoration of saved clones.
 - Unit tests, CI, security scanning, and release documentation.
 
-[Unreleased]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/rkbkosp/pi-provider-clone/compare/v0.1.0...v0.2.0
