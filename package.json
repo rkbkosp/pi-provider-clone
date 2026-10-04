@@ -64,8 +64,8 @@
     "@earendil-works/pi-coding-agent": ">=0.82.1"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.99.2",
-    "@earendil-works/pi-coding-agent": "0.99.2",
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.2",
     "@eslint/js": "10.0.1",
     "@types/node": "24.13.6",
     "eslint": "10.11.0",
@@ -74,7 +74,7 @@
     "vitest": "5.0.0"
   },
   "overrides": {
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "protobufjs": "7.6.5"
   },
   "engines": {
