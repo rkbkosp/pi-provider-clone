@@ -6,6 +6,7 @@ on:
     paths:
       - package.json
       - .github/workflows/release.yml
+      - .github/scripts/release-state.ts
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,7 @@ concurrency:
 jobs:
   release:
     name: Publish npm and GitHub release
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -35,74 +37,63 @@ jobs:
           node-version: 24.x
           package-manager-cache: false
 
+      - name: Inspect release state
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-state.ts "$RUNNER_TEMP/release-notes.md"
+
+      - name: Check out original release source
+        if: steps.meta.outputs.complete != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.meta.outputs.release_sha }}
+          fetch-depth: 0
+
       - name: Ensure OIDC-capable npm
+        if: steps.meta.outputs.complete != 'true' && steps.meta.outputs.published != 'true'
         run: npm install --global "npm@^11.5.1"
 
-      - name: Read release metadata
-        id: meta
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
-          PACKAGE="$(node -p "require('./package.json').name")"
-          TAG="v${VERSION}"
-          RELEASE_SHA="$(git log -1 --format=%H -- package.json)"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "package=${PACKAGE}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
-          if ! grep -Fq "## [${VERSION}]" CHANGELOG.md; then
-            echo "CHANGELOG.md has no release section for ${VERSION}" >&2
-            exit 1
-          fi
-          awk -v marker="## [${VERSION}]" '
-            index($0, marker) == 1 { found=1; next }
-            found && /^## \[/ { exit }
-            found { print }
-          ' CHANGELOG.md > /tmp/release-notes.md
-          if [[ ! -s /tmp/release-notes.md ]]; then
-            echo "Release notes for ${VERSION} are empty" >&2
-            exit 1
-          fi
-
       - name: Install dependencies
+        if: steps.meta.outputs.complete != 'true' && steps.meta.outputs.published != 'true'
         run: npm ci --ignore-scripts
 
       - name: Run release checks
+        if: steps.meta.outputs.complete != 'true' && steps.meta.outputs.published != 'true'
         run: |
           npm run check
           npm audit --audit-level=high
           npm pack --dry-run
 
-      - name: Check npm publication state
-        id: npm-state
-        shell: bash
-        run: |
-          if npm view "${{ steps.meta.outputs.package }}@${{ steps.meta.outputs.version }}" version >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish to npm with trusted publishing
         id: publish-oidc
-        if: steps.npm-state.outputs.published != 'true'
+        if: steps.meta.outputs.published != 'true'
         continue-on-error: true
         run: npm publish --access public
 
       - name: Publish to npm with token fallback
-        if: steps.npm-state.outputs.published != 'true' && steps.publish-oidc.outcome == 'failure' && env.NPM_TOKEN_FALLBACK != ''
+        if: steps.meta.outputs.published != 'true' && steps.publish-oidc.outcome == 'failure' && env.NPM_TOKEN_FALLBACK != ''
         shell: bash
         run: |
           set -euo pipefail
-          if npm view "${{ steps.meta.outputs.package }}@${{ steps.meta.outputs.version }}" version >/dev/null 2>&1; then
+          if NPM_STATE="$(npm view "${{ steps.meta.outputs.package }}@${{ steps.meta.outputs.version }}" version --json)"; then
             echo "Package was published by the previous attempt; skipping token fallback."
             exit 0
           fi
+          # A registry outage or authentication error is not permission to publish.
+          printf '%s' "$NPM_STATE" | node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              if (JSON.parse(input).error?.code !== "E404") process.exit(1);
+            });
+          '
+
           printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN_FALLBACK" > "$RUNNER_TEMP/npmrc"
           npm publish --access public --userconfig "$RUNNER_TEMP/npmrc"
 
       - name: Verify npm publication
+        if: steps.meta.outputs.complete != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -123,6 +114,7 @@ jobs:
           exit 1
 
       - name: Create release tag
+        if: steps.meta.outputs.complete != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -142,16 +134,13 @@ jobs:
           fi
 
       - name: Create GitHub release
+        if: steps.meta.outputs.complete != 'true' && steps.meta.outputs.released != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "GitHub release ${TAG} already exists; skipping."
-          else
-            gh release create "${TAG}" \
-              --verify-tag \
-              --title "${TAG}" \
-              --notes-file /tmp/release-notes.md
-          fi
+          gh release create "${TAG}" \
+            --verify-tag \
+            --title "${TAG}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
